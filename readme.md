@@ -20,7 +20,7 @@ of women in chess.
 
 In the following I replicate his analysis and also look at the entire
 world, not only India. A blog post on the topic can be found
-[here](https://followtheargument.org/gender-differences-among-top-performers-in-chess" class="uri">https://followtheargument.org/gender-differences-among-top-performers-in-chess).
+[here](https://followtheargument.org/gender-differences-among-top-performers-in-chess).
 
 Replication: Analysis of gender differences in India
 ----------------------------------------------------
