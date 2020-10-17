@@ -9,7 +9,7 @@ Professor Wei Ji Ma recently posted an [article](https://en.chessbase.com/post/w
 
 His basic argument is this: Often, people claim that women are worse at chess and point to the low number of female chess players among the all the top chess players in the world. While the observation is correct, according to Professor Ma, the conclusion is false. The reason is that comparing the maximum values is a very bad way of comparing two distributions. He finds that indeed women in India are likely overperforming given what we should expect from the low overall number of women in chess. 
 
-In the following I replicate his analysis and also look at the entire world, not only India. 
+In the following I replicate his analysis and also look at the entire world, not only India. A blog post on the topic can be found (here)[https://followtheargument.org/gender-differences-among-top-performers-in-chess]. 
 
 
 ```{r setup, include=FALSE}
@@ -37,7 +37,7 @@ chess_filtered_india <- chess %>%
 
 ## Replication: Analysis of gender differences in India
 
-### Relative performance of men and women
+### Relative performance of men and women in India
 
 ```{r india}
 plot <- ggplot()
@@ -55,7 +55,7 @@ plot <- plot +
 plot 
 ```
 
-### Basic summary statistics
+### Basic summary statistics India
 ```{r summary-india}
 summary_india <- chess_filtered_india %>%
   dplyr::group_by(sex) %>%
@@ -67,7 +67,7 @@ summary_india <- chess_filtered_india %>%
 summary_india
 ```
 
-### Differences in top performers in India
+### Performance of best players in India
 ```{r top-india}
 summary_india_top <- chess_filtered_india %>%
   dplyr::group_by(sex) %>%
@@ -181,7 +181,7 @@ results_india %>%
   
 ## New Analysis: Gender Differences in the World
 
-### Relative performance of men and women
+### Relative performance of men and women in the world
 
 ```{r world}
 plot <- ggplot()
@@ -211,7 +211,7 @@ summary_world <- chess_filtered_world %>%
 summary_world
 ```
 
-### Differences in top performers in the world
+### Performance of top players in the world
 ```{r top-world}
 summary_world_top <- chess_filtered_world %>%
   dplyr::group_by(sex) %>%
@@ -296,4 +296,79 @@ results_world %>%
 
 ```
 
+## Differences in median performances across countries
 
+Only countries with 1000 or more registered players are taken into account
+``` {r country-performance}
+
+chess_filtered_world %>%
+  dplyr::group_by(country) %>%
+  dplyr::filter(dplyr::n() > 3000) %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::summarise(median = median(rating)) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(country) %>%
+  dplyr::summarise(difference = diff(median)) %>%
+  dplyr::arrange(difference) %>%
+  dplyr::mutate(country = forcats::fct_reorder(country, sort(difference))) %>%
+  ggplot(aes(y = difference, x = country, group = 1)) + 
+  geom_point() + 
+  geom_line(alpha = 0.3) + 
+  theme_minimal()
+
+```
+
+### Correlation between performance differences and the proportion of female players
+
+```{r correlation}
+
+median_difference <- chess_filtered_world %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::summarise(median = median(rating)) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(country) %>%
+  dplyr::summarise(difference = diff(median))
+
+percentage_women <- chess_filtered_world %>%
+  dplyr::group_by(country) %>%
+  dplyr::summarise(women = mean(sex == "F")) 
+
+combined <- dplyr::full_join(median_difference, percentage_women) %>%
+  dplyr::filter(!is.na(difference))
+
+cor(combined$difference, combined$women)
+
+```
+
+
+``` {r world-map, eval = FALSE}
+library(highcharter)
+library(countrycode)
+
+plot_map <- combined %>%
+  dplyr::mutate(country_iso = countrycode(country, 
+                                      origin = "ioc", 
+                                      destination = "iso3c"), 
+                country = ifelse(is.na(country_iso), country, country_iso), 
+                country = ifelse(country == "ENG", "GBR", country)) %>%
+  dplyr::rename("iso-a3" = country)
+
+
+map <- hcmap(
+  map = "custom/world-highres3", # high resolution world map
+  data = plot_map, # name of dataset
+  joinBy = "iso-a3",
+  value = "difference",
+  showInLegend = TRUE, # hide legend
+  nullColor = "#DADADA",
+  download_map_data = TRUE
+) %>%
+  hc_mapNavigation(enabled = TRUE) %>%
+  hc_legend("none") %>%
+  hc_title(text = "World map")
+
+library(htmlwidgets)
+library(highcharter)
+
+saveWidget(map, file = "map.html")
+```
