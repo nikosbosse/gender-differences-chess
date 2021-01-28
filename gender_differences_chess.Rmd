@@ -21,7 +21,7 @@ library(ggplot2)
 chess <- readr::read_csv("chess_standard_dataframe.csv")
 
 # set parameters
-n_highest = 1
+n_highest = 10
 n_draws = 100000
 redo_from_scratch <- FALSE
 
