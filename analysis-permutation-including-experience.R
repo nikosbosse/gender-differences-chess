@@ -75,7 +75,7 @@ apply_permuatation <- function(region, data, metric = "rating") {
   observed_difference <- data %>%
     dplyr::filter(country == region) %>%
     dplyr::group_by(sex) %>%
-    dplyr::arrange(eval(metric)) %>%
+    dplyr::arrange(rating) %>%
     dplyr::slice_tail(n = n_highest) %>%
     dplyr::summarise(mean = mean(get(metric)), 
                      .groups = "drop_last") 
@@ -119,11 +119,15 @@ results1_age <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
                      metric = "age")
 }
 
+data.table::fwrite(results1_age, "results/results_top1_age.csv")
+
 results1_number_games <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
   apply_permuatation(region = regions[i], 
                      data = data, 
-                     metric = "age")
+                     metric = "number_games")
 }
+
+data.table::fwrite(results1_number_games, "results/results_top1_number_games.csv")
 
 
 n_highest = 10
@@ -133,12 +137,16 @@ results10_age <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
                      metric = "age")
 }
 
+data.table::fwrite(results10_age, "results/results_top10_age.csv")
+
+
 results10_number_games <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
   apply_permuatation(region = regions[i], 
                      data = data, 
-                     metric = "age")
+                     metric = "number_games")
 }
 
+data.table::fwrite(results10_number_games, "results/results10_number_games.csv")
 
 n_highest = Inf
 results_all_age <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
@@ -147,8 +155,13 @@ results_all_age <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
                      metric = "age")
 }
 
+data.table::fwrite(results_all_age, "results/results_all_age.csv")
+
 results_all_number_games <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
   apply_permuatation(region = regions[i], 
                      data = data, 
                      metric = "age")
 }
+
+data.table::fwrite(results_all_number_games, "results/results_all_number_games.csv")
+
