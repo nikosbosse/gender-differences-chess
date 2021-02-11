@@ -32,12 +32,13 @@ data <- experience %>%
   dplyr::mutate(age =  2021 - as.numeric(birthday))
 
 
-permute <- function(data_female, data_male, n_highest = 10) {
-  n_small <- length(data_female)
-  n_large <- length(data_male)
+permute <- function(data_female, data_male, n_highest = 10, 
+                    data_col = NULL) {
+  n_small <- nrow(data_female)
+  n_large <- nrow(data_male)
   n_total <- n_small + n_large
   
-  all_data <- c(data_female, data_male)
+  all_data <- rbindlist(list(data_female, data_male))
   
   # shuffle scores
   all_data <- all_data[sample(n_total)]
@@ -46,31 +47,31 @@ permute <- function(data_female, data_male, n_highest = 10) {
   values_small <- all_data[1:n_small]
   values_large <- all_data[(n_small + 1):n_total]
   
-  
   if (n_highest == 1) {
-    mean_small <- max(values_small)
-    mean_large <- max(values_large)
+    # select row in data.table where value rating is the highest and get the correspoding value in the data_col
+    mean_small <- values_small[which(values_small[["rating"]] == max(values_small[["rating"]]))][[data_col]]
+    mean_large <- values_large[which(values_large[["rating"]] == max(values_large[["rating"]]))][[data_col]]
   } else if (n_highest == Inf) {
-    mean_small <- mean(values_small)
-    mean_large <- mean(values_large)
+    mean_small <- mean(values_small[[data_col]])
+    mean_large <- mean(values_large[[data_col]])
   } else {
-    mean_small <- mean(tail(sort(values_small), n_highest))
-    mean_large <- mean(tail(sort(values_large), n_highest))
+    # logic from inner to outer: sort data.table according to rating, take the last n_highest rows and take the mean of the data_col value
+    mean_small <- mean(tail(values_small[order(values_small[["rating"]])], 10)[[data_col]])
+    mean_large <- mean(tail(values_large[order(values_large[["rating"]])], 10)[[data_col]])
   }
   return(mean_large - mean_small)
 }
-
 
 apply_permuatation <- function(region, data, metric = "rating") {
   data_female <- data %>%
     dplyr::filter(country == region, 
                   sex == "F") %>%
-    dplyr::pull(eval(metric))
+    dplyr::select(c(rating, eval(metric), sex))
   
   data_male <- data %>%
     dplyr::filter(country == region, 
-                  sex == "M") %>%
-    dplyr::pull(eval(metric))
+                  sex == "M")  %>%
+    dplyr::select(c(rating, eval(metric), sex))
   
   observed_difference <- data %>%
     dplyr::filter(country == region) %>%
@@ -84,9 +85,18 @@ apply_permuatation <- function(region, data, metric = "rating") {
   female <- observed_difference$mean[observed_difference$sex == "F"]
   diff <- male - female
   
+  # turn into data.table for faster computation
+  data.table::setDT(data_female)
+  data.table::setDT(data_male)
+  
   permuted_differences <- replicate(n = n_draws, expr = {
-    permute(data_female, data_male, n_highest = n_highest)
+    permute(data_female, data_male, n_highest = n_highest, data_col = metric)
   })
+  
+  # for some reason this is a list now - unsure why
+  if (is.list(permuted_differences)) {
+    permuted_differences <- unlist(permuted_differences)
+  }
   
   res <- data.table(country = region, 
                     mean_male = male, 
@@ -103,7 +113,7 @@ apply_permuatation <- function(region, data, metric = "rating") {
 
 
 # set parameters
-n_draws = 100000
+n_draws = 100
 regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE", 
              "TUR", "HUN", "BRA", "SRI", "SRB", "NED", "ITA", "COL", "UKR",
              "AUT", "SVK", "CHN", "CRO", "ROU", "MEX", "BEL", "SWE", "ENG", 
@@ -160,7 +170,7 @@ data.table::fwrite(results_all_age, "results/results_all_age.csv")
 results_all_number_games <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
   apply_permuatation(region = regions[i], 
                      data = data, 
-                     metric = "age")
+                     metric = "number_games")
 }
 
 data.table::fwrite(results_all_number_games, "results/results_all_number_games.csv")
