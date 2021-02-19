@@ -144,7 +144,7 @@ regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE",
              "BUL")
 
 n_highest = 1
-n_draws = 100
+n_draws = 100000
 
 # apply permutation to each country. Use %dopar% for parallel computing
 results1_age <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
