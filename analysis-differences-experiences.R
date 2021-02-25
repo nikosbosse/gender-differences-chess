@@ -22,7 +22,7 @@ data <- experience %>%
   dplyr::filter(!(flag == "i"), 
                 !(flag == "wi"))
 
-
+# summary table
 data %>%
   dplyr::group_by(sex) %>%
   dplyr::summarise(mean = mean(number_games), 
@@ -39,6 +39,18 @@ data_top_10 <- data %>%
   dplyr::group_by(country, sex) %>%
   dplyr::arrange(rating) %>%
   dplyr::slice(10)
+
+
+# summary table
+data_top_10 %>%
+  dplyr::group_by(sex) %>%
+  dplyr::summarise(mean = mean(number_games), 
+                   max = max(number_games), 
+                   n_obs = dplyr::n(), 
+                   sum = sum(number_games), 
+                   sd = sd(number_games), 
+                   cor = cor(rating, number_games)) %>%
+  knitr::kable(format = "latex")
 
 
 # Distribution of experience by gender
