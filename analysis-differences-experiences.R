@@ -15,12 +15,20 @@ names(experience) <- c("fideid", "last_name", "first_name",
 
 fide <- data.table::fread("data/20201006_FIDE_ratings.csv")
 
+regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE", 
+             "TUR", "HUN", "BRA", "SRI", "SRB", "NED", "ITA", "COL", "UKR",
+             "AUT", "SVK", "CHN", "CRO", "ROU", "MEX", "BEL", "SWE", "ENG", 
+             "KAZ", "CUB", "GEO", "NOR", "USA", "SUI", "VIE", "LTU", "ARG", 
+             "ISR", "DEN", "EGY", "PHI", "BAN", "LAT", "SLO", "CHI", "KEN", 
+             "BUL")
+
 
 data <- experience %>%
   dplyr::select(fideid, number_games) %>%
   dplyr::inner_join(fide) %>%
   dplyr::filter(!(flag == "i"), 
-                !(flag == "wi"))
+                !(flag == "wi"), 
+                country %in% regions)
 
 # summary table
 data %>%
