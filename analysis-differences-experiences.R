@@ -40,8 +40,7 @@ data_top_10 <- data %>%
   dplyr::arrange(rating) %>%
   dplyr::slice(10)
 
-
-# summary table
+# summary table for the top 10 players only
 data_top_10 %>%
   dplyr::group_by(sex) %>%
   dplyr::summarise(mean = mean(number_games), 
@@ -51,6 +50,27 @@ data_top_10 %>%
                    sd = sd(number_games), 
                    cor = cor(rating, number_games)) %>%
   knitr::kable(format = "latex")
+
+# scatter plot for the difference between rating and the difference in experiene
+data_top_10 %>%
+  dplyr::mutate(age =  2021 - as.numeric(birthday)) %>%
+  dplyr::select(rating, number_games, country, sex, age) %>%
+  dplyr::group_by(sex, country) %>%
+  dplyr::summarise(number_games = mean(number_games, na.rm = TRUE), 
+                   age = mean(age, na.rm = TRUE), 
+                   rating = mean(rating, na.rm = TRUE), 
+                   .groups = "drop_last") %>%
+  tidyr::pivot_wider(values_from = c(age, rating, number_games), names_from = sex) %>%
+  dplyr::mutate(age_diff = age_M - age_F, 
+                rating_diff = rating_M - rating_F, 
+                experience_diff = number_games_M - number_games_F) %>%
+  dplyr::select(country, age_diff, rating_diff, experience_diff) %>%
+  tidyr::pivot_longer(cols = c(age_diff, experience_diff), 
+                      names_to = "category") %>%
+  ggplot2::ggplot(ggplot2::aes(y = rating_diff, x = value)) + 
+  ggplot2::geom_point() + 
+  ggplot2::facet_wrap(~ category, scales = "free")
+
 
 
 # Distribution of experience by gender
