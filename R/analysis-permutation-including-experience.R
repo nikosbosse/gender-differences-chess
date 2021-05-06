@@ -1,3 +1,6 @@
+# this scripts repeats the permutation analysis in analysis-gaps-by-country.R
+# for experience
+
 library(magrittr)
 library(data.table)
 library(ggplot2)

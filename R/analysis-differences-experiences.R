@@ -1,3 +1,5 @@
+# This script examines how experience influences ratings of men an women
+
 library(magrittr)
 library(ggplot2)
 

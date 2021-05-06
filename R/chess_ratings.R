@@ -1,3 +1,5 @@
+# analysis script for my original blog article, but no longer in use
+
 library(magrittr)
 library(data.table)
 library(ggplot2)

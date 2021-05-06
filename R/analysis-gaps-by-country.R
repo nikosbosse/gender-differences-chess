@@ -1,3 +1,9 @@
+# This script generates permutation tests to analyse whether the distribution
+# of top women and men can be explained by pure chance
+# the analysis is repeated for every single country
+
+
+
 library(magrittr)
 library(data.table)
 library(ggplot2)
@@ -5,15 +11,11 @@ library(foreach)
 library(doParallel)
 registerDoParallel(cores=4)
 
-# chess <- readr::read_csv("data/standard_oct20frl.txt")
+
+# read in and combine data
 chess <- readr::read_csv("data/20201006_FIDE_ratings.csv")
-# chess <- data.table::fread("data/standard_oct20frl.txt", fill = TRUE, sep2 = " ")
-
-# chess <- data.table::fread("data/standard_oct20frl.txt", fill = TRUE, sep2 = " ")
-
 inactive <- readr::read_csv("data/inactive_players_jan20.txt", col_names = "fideid") %>%
   dplyr::mutate(inactive = TRUE)
-
 combined <- dplyr::full_join(chess, inactive)
 
 # set parameters
@@ -25,12 +27,6 @@ chess_filtered_world <- combined %>%
   dplyr::mutate(inactive = ifelse(is.na(inactive), FALSE, TRUE)) %>%
   dplyr::filter(birthday < 2000, 
                 inactive == FALSE)
-
-
-
-# regions <- c("RUS", "GER", "IND", "ESP", "FRA", "POL", "ITA", "IRI", "CZE", 
-#              "TUR", "USA", "HUN", "GRE", "BRA", "SRB", "NED", "ARG", "UKR", 
-#              "DEN", "SVK")
 
 regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE", 
              "TUR", "HUN", "BRA", "SRI", "SRB", "NED", "ITA", "COL", "UKR",
