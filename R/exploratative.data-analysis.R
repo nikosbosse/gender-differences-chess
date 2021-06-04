@@ -92,6 +92,8 @@ performance %>%
   facet_wrap(~ sex, scales = "free_x") + 
   geom_smooth()
 
+ggsave("results/plots/sd-vs-number-of-players.png")
+
 # check mean in different countries for men and women
 p_mean <- performance %>%
   ggplot(aes(y = mean, x = sex, fill = sex, color = sex)) + 
@@ -99,6 +101,8 @@ p_mean <- performance %>%
   geom_boxplot(alpha = 0.3, color = "black") + 
   theme(legend.position = "bottom") + 
   geom_jitter()
+
+ggsave("results/plots/mean-men-vs-women.png")
 
 # check mediann in different countries for men and women
 p_median <- performance %>%
