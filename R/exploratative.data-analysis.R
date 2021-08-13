@@ -7,8 +7,22 @@ library(magrittr)
 library(ggplot2)
 library(tidyr)
 library(patchwork)
+library(data.table)
 
 # read in and combine data
+pvals_mean_rating <- fread("results/results_all.csv") %>%
+  dplyr::mutate(p_val = 1 - perc_smaller_all) %>%
+  dplyr::select(country, p_val)
+
+pvals_sd_rating <- fread("results/results_all_sd.csv") %>%
+  dplyr::mutate(p_val = 1 - perc_smaller) %>%
+  dplyr::select(country, p_val)
+
+pvals_median_rating <- fread("results/results_all_median.csv") %>%
+  dplyr::mutate(p_val = 1 - perc_smaller) %>%
+  dplyr::select(country, p_val)
+
+
 chess <- readr::read_csv("data/20201006_FIDE_ratings.csv")
 inactive <- readr::read_csv("data/inactive_players_jan20.txt", col_names = "fideid") %>%
   dplyr::mutate(inactive = TRUE)
@@ -22,14 +36,14 @@ regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE",
              "ISR", "DEN", "EGY", "PHI", "BAN", "LAT", "SLO", "CHI", "KEN", 
              "BUL")
 
-data <- combined %>%
+world_data <- combined %>%
   dplyr::mutate(inactive = ifelse(is.na(inactive), FALSE, TRUE)) %>%
   dplyr::filter(birthday < 2000, 
-                !inactive, 
-                country %in% regions) %>%
+                !inactive) %>%
   select(fideid, country, sex, rating, birthday)
  
-
+data <- world_data %>%
+  dplyr::filter(country %in% regions)
 
 # calculate mean performance by country 
 performance <- data %>%
@@ -54,14 +68,257 @@ performance_wide <- performance %>%
 
 # scatter plot of average performance difference vs. female participation 
 performance_wide %>%
-  ggplot(aes(y = diff, x = n_rel_F)) + 
+  ggplot(aes(x = diff, y = n_rel_F)) + 
   geom_point() + 
-  geom_hline(yintercept = 0) + 
-  labs(y = "Difference in average performance men - women", 
-       x = "Percentage of female players in a country") + 
-  geom_smooth()
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") + 
+  labs(x = "Difference in average performance men - women", 
+       y = "Percentage of female players in a country") + 
+  geom_smooth(method = "glm", 
+              method.args=list(family="binomial"), 
+              alpha = 0.1, colour = 'black', size = 0.4) + 
+  theme_minimal()
 
-ggsave("results/plots/female-participation-performance.png")
+ggsave("results/plots/female-participation-performance.png", 
+       width = 10, height = 4)
+
+
+# histogram of the distribution of ratings -------------------------------------
+
+hist_F <- world_data %>%
+  dplyr::filter(sex == "F") %>%
+  dplyr::mutate(sex = "Female") %>%
+  ggplot(aes(x = rating)) +
+  geom_histogram(aes(y = stat(count) / sum(count)), 
+                 colour = "white") + 
+  facet_wrap(~ sex) + 
+  theme_minimal() +
+  labs(y = "Proportion", x = "Rating")
+
+
+hist_M <- world_data %>%
+  dplyr::filter(sex == "M") %>%
+  dplyr::mutate(sex = "Male") %>%
+  ggplot(aes(x = rating)) +
+  geom_histogram(aes(y = stat(count) / sum(count)), 
+                 colour = "white") + 
+  facet_wrap(~ sex) + 
+  theme_minimal() + 
+  labs(y = "Proportion", x = "Rating")
+
+hist_F + hist_M
+
+ggsave("results/plots/histograms_ratings_world.png", 
+       width = 10, height = 4)
+
+# scatter plot for the mean of women and mean in every country
+# ------------------------------------------------------------------------------
+
+plot_data <- data %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::summarise(rating = mean(rating)) %>%
+  tidyr::pivot_wider(names_from = sex, 
+                     values_from = rating) %>%
+  dplyr::mutate(difference = M - F) %>%
+  dplyr::inner_join(pvals_mean_rating) %>%
+  dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+                                   "Significant", 
+                                   "Not significant"))
+
+p <- plot_data %>%
+  ggplot(aes(y = F, x = M)) +
+  geom_point(aes(colour = `P-value`)) +
+  geom_abline(aes(slope = 1, intercept = 0), 
+              linetype = "dashed", color = "grey40") +
+  coord_cartesian(xlim = c(1200, 2200), ylim = c(1200, 2200)) + 
+  labs(y = "Mean rating females", x = "Mean rating males") + 
+  theme_minimal() + 
+  theme(legend.position = "none") + 
+  scale_color_manual(values = c("black", "tomato3")) 
+
+# additional histogram
+inset <- plot_data %>%
+  ggplot(aes(x = difference)) +
+  geom_histogram(aes(y = stat(count) / sum(count)), 
+                 colour = "white", fill = "grey50") + 
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme_bw() + 
+  labs(x = "Diff. rating mean", y = "Proportion")  
+
+mean_plot <- p + inset_element(inset, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
+
+ggsave("results/plots/scatter_mean_male_female.png", width = 4, height = 4)
+
+
+
+# scatter plot for the median of women and men in every country
+# ------------------------------------------------------------------------------
+
+plot_data <- data %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::summarise(rating = median(rating)) %>%
+  tidyr::pivot_wider(names_from = sex, 
+                     values_from = rating) %>%
+  dplyr::inner_join(pvals_median_rating) %>%
+  dplyr::mutate(difference = M - F) %>%
+  dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+                                   "Significant", 
+                                   "Not significant"))
+
+p <- plot_data %>%
+  ggplot(aes(y = F, x = M)) +
+  geom_point(aes(colour = `P-value`)) +
+  geom_abline(aes(slope = 1, intercept = 0), 
+              linetype = "dashed", color = "grey40") +
+  coord_cartesian(xlim = c(1200, 2200), ylim = c(1200, 2200)) + 
+  labs(y = "Median rating females", x = "Median rating males") + 
+  theme_minimal() + 
+  theme(legend.position = "none") + 
+  scale_color_manual(values = c("black", "tomato3")) 
+
+# additional histogram
+inset <- plot_data %>%
+  ggplot(aes(x = difference)) +
+  geom_histogram(aes(y = stat(count) / sum(count)), 
+                 colour = "white", fill = "grey50") + 
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme_bw() + 
+  labs(x = "Diff. rating median", y = "Proportion")  
+
+median_plot <- p + inset_element(inset, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
+
+ggsave("results/plots/scatter_median_male_female.png", 
+       width = 4, height = 4)
+
+
+# scatter plot for the sd of women and mean in every country
+# ------------------------------------------------------------------------------
+plot_data <- data %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::summarise(rating = sd(rating)) %>%
+  tidyr::pivot_wider(names_from = sex, 
+                     values_from = rating) %>%
+  dplyr::mutate(difference = M - F) %>%
+  dplyr::inner_join(pvals_sd_rating) %>%
+  dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+                                   "Significant", 
+                                   "Not significant"))
+
+p <- plot_data %>%
+  ggplot(aes(y = F, x = M)) +
+  geom_point(aes(colour = `P-value`)) +
+  geom_abline(aes(slope = 1, intercept = 0), 
+              linetype = "dashed", color = "grey40") +
+  coord_cartesian(xlim = c(160, 450), ylim = c(160, 450)) +
+  labs(y = "SD rating females", x = "SD rating males") + 
+  theme_minimal() + 
+  scale_color_manual(values = c("black", "tomato3")) 
+
+# additional histogram
+inset <- plot_data %>%
+  ggplot(aes(x = difference)) +
+  geom_histogram(aes(y = stat(count) / sum(count)), 
+                 colour = "white", fill = "grey50") + 
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme_bw() + 
+  labs(x = "Diff. rating SD", y = "Proportion")  
+
+sd_plot <- p + inset_element(inset, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
+
+ggsave("results/plots/scatter_sd_male_female.png", 
+       width = 4, height = 4)
+
+# combined mean and sd plot ----------------------------------------------------
+p2 <- mean_plot + median_plot + sd_plot + 
+  plot_layout(guides = "collect") &
+  theme(legend.position = 'bottom') 
+  
+
+ggsave("results/plots/scatter_combined_male_female.png", 
+       width = 12, height = 4)
+
+
+
+
+
+# mean age plot for the countries ----------------------------------------------
+plot_data <- data %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::summarise(age = mean(2021 - birthday, na.rm = TRUE)) %>%
+  tidyr::pivot_wider(names_from = sex, 
+                     values_from = age) %>%
+  dplyr::mutate(difference = M - F) 
+
+mean_age <- plot_data %>%
+  ggplot(aes(y = F, x = M)) +
+  geom_point() +
+  geom_abline(aes(slope = 1, intercept = 0), 
+              linetype = "dashed", color = "grey40") +
+  coord_cartesian(xlim = c(20, 60), ylim = c(20, 60)) + 
+  theme_minimal() + 
+  labs(y = "Country average age female", x = "Country average age male")
+
+
+# relationship between age and rating ------------------------------------------
+
+data %>%
+  dplyr::mutate(age = 2021 - birthday) %>%
+  ggplot(aes(y = rating, x = age)) + 
+  theme_minimal()
+
+# for top 10: age vs. ratings
+agetop10 <- data %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::arrange(-rating) %>%
+  dplyr::slice(10) %>%
+  dplyr::mutate(age = 2021 - birthday) %>%
+  ggplot(aes(y = rating, x = age)) + 
+  geom_point(aes(color = sex)) + 
+  theme_minimal() + 
+  labs(y = "Rating top 10", x = "Average age top 10")
+
+ggsave("results/plots/scatter_age_rating.png")
+
+
+# combine age plots
+mean_age + agetop10 + 
+  plot_annotation(tag_levels = 'A')
+
+ggsave("results/plots/scatter_combined_age.png", 
+       width = 12, height = 4)
+
+# plot with age difference vs. rating difference for top 10. not so sure
+rating_vs_age_top10 <- data %>%
+  dplyr::group_by(country, sex) %>%
+  dplyr::arrange(-rating) %>%
+  dplyr::slice(10) %>%
+  dplyr::mutate(age = 2021 - birthday) %>%
+  dplyr::summarise(age = mean(age), 
+                   rating = mean(rating)) %>%
+  tidyr::pivot_wider(names_from = sex, values_from = c(age, rating)) %>%
+  dplyr::mutate(age_diff = age_M - age_F, 
+                rating_diff = rating_M - rating_F, 
+                `Avg. man older` = age_diff > 0) %>% 
+  ggplot(aes(y = rating_diff, x = age_diff)) + 
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") + 
+  geom_point(aes(color = `Avg. man older`)) + 
+  geom_smooth(method = "lm", se = TRUE, 
+              size = 0.4,
+              colour = 'black', alpha = 0.1) + 
+  theme_minimal() + 
+  labs(y = "Rating difference", x = "Age difference")
+
+ggsave("results/plots/scatter_diff_age_rating.png", 
+       width = 10, height = 4)
+
+
+
+
+
+
+
+
+
+
 
 
 # variances of men and women

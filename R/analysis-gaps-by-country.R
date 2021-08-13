@@ -3,7 +3,6 @@
 # the analysis is repeated for every single country
 
 
-
 library(magrittr)
 library(data.table)
 library(ggplot2)
@@ -70,7 +69,8 @@ summary_top <- purrr::map_dfr(regions,
 
 
 
-permute <- function(scores_female, scores_male, n_highest = 10) {
+permute <- function(scores_female, scores_male, n_highest = 10, 
+                    fct = mean) {
   n_small <- length(scores_female)
   n_large <- length(scores_male)
   n_total <- n_small + n_large
@@ -89,17 +89,17 @@ permute <- function(scores_female, scores_male, n_highest = 10) {
     mean_small <- max(values_small)
     mean_large <- max(values_large)
   } else if (n_highest == Inf) {
-    mean_small <- mean(values_small)
-    mean_large <- mean(values_large)
+    mean_small <- do.call(fct, list(values_small))
+    mean_large <- do.call(fct, list(values_large))
   } else {
-    mean_small <- mean(tail(sort(values_small), n_highest))
-    mean_large <- mean(tail(sort(values_large), n_highest))
+    mean_small <- do.call(fct, list(tail(sort(values_small), n_highest)))
+    mean_large <- do.call(fct, list(tail(sort(values_large), n_highest)))
   }
   return(mean_large - mean_small)
 }
 
 
-apply_permuatation <- function(region) {
+apply_permuatation <- function(region, fct = mean) {
   scores_female <- chess_filtered_world %>%
     dplyr::filter(country == region, 
                   sex == "F") %>%
@@ -115,13 +115,13 @@ apply_permuatation <- function(region) {
     dplyr::group_by(sex) %>%
     dplyr::arrange(rating) %>%
     dplyr::slice_tail(n = n_highest) %>%
-    dplyr::summarise(mean = mean(rating), 
+    dplyr::summarise(out = do.call(fct, list(rating)), 
                      .groups = "drop_last") %>%
-    dplyr::pull(mean) %>%
+    dplyr::pull(out) %>%
     diff()
   
   permuted_differences <- replicate(n = n_draws, expr = {
-    permute(scores_female, scores_male, n_highest = n_highest)
+    permute(scores_female, scores_male, n_highest = n_highest, fct = fct)
   })
   
   res <- data.frame(country = region, 
@@ -166,18 +166,33 @@ results1[, n_highest := NULL]
 results10[, n_highest := NULL]
 results_all[, n_highest := NULL]
 
-names(results1) <- c("country", "obs_diff_top_1", "mean_perm_diff_top_1", "perc_smaller_top_1")
-names(results10) <- c("country", "obs_diff_top_10", "mean_perm_diff_top_10", "perc_smaller_top_10")
-names(results_all) <- c("country", "obs_diff_all", "mean_perm_diff_all", "perc_smaller_all")
+names(results1) <- c("country", "Obs. top 1", "Expected top 1", "p top 1")
+names(results10) <- c("country", "Obs. top 10", "Expected top 10", "p top 10")
+names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
 
 results <- merge(merge(results1, results10), results_all)
 
-# order <-results$ country[which(results$country == region)]
-# 
-# reorder(factor(results$country), factor(regions))
-
 results <- results[match(regions, country)]
+
+round_1 <- c("Expected top 1", "Expected top 10", "Expected all", 
+             "Obs. top 10", "Obs. all")
+
+results[, c(round_1) := lapply(.SD, round, digits = 1), .SDcols = round_1]
+results[, `:=` ("p top 1" = round(1 - `p top 1`, 2), 
+                "p top 10" = round(1 - `p top 10`, 2), 
+                "p top all" = round(1 - `p all`, 2))]
 
 knitr::kable(results, format = "latex")
 
 data.table::fwrite(results, "results/combined_results.csv")
+
+n_highest = Inf
+results_all_median <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
+  apply_permuatation(regions[i], fct = median)
+}
+data.table::fwrite(results_all_median, "results/results_all_median.csv")
+
+results_all_sd <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
+  apply_permuatation(regions[i], fct = sd)
+}
+data.table::fwrite(results_all_sd, "results/results_all_sd.csv")

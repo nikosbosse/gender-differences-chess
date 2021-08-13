@@ -2,6 +2,14 @@
 
 library(magrittr)
 library(ggplot2)
+library(ggExtra)
+library(patchwork)
+library(data.table)
+
+# load p-values from permutation test
+pvals_mean_rating <- fread("results/results_all.csv") %>%
+  dplyr::mutate(p_val = 1 - perc_smaller_all) %>%
+  dplyr::select(country, p_val)
 
 # changed line 135635 in the original data file to Abrosimov, Nikolay
 experience <- data.table::fread("data/experiencedatafromchessbase.csv", 
@@ -28,6 +36,7 @@ regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE",
 data <- experience %>%
   dplyr::select(fideid, number_games) %>%
   dplyr::inner_join(fide) %>%
+  dplyr::inner_join(pvals_mean_rating) %>%
   dplyr::filter(!(flag == "i"), 
                 !(flag == "wi"), 
                 country %in% regions)
@@ -35,30 +44,34 @@ data <- experience %>%
 # summary table
 data %>%
   dplyr::group_by(sex) %>%
-  dplyr::summarise(mean = mean(number_games), 
-                   max = max(number_games), 
-                   n_obs = dplyr::n(), 
-                   sum = sum(number_games), 
+  dplyr::summarise(`Avg. games` = mean(number_games), 
+                   `Max. games` = max(number_games), 
+                   n = dplyr::n(), 
+                   # sum = sum(number_games), 
                    sd = sd(number_games), 
                    cor = cor(rating, number_games)) %>%
+  dplyr::mutate_if(is.numeric, ~ round(., digits = 2)) %>%
   knitr::kable(format = "latex")
 
 
+# calculate data for the top 10
+# ------------------------------------------------------------------------------
 
 data_top_10 <- data %>%
   dplyr::group_by(country, sex) %>%
-  dplyr::arrange(rating) %>%
+  dplyr::arrange(-rating) %>%
   dplyr::slice(10)
 
 # summary table for the top 10 players only
 data_top_10 %>%
   dplyr::group_by(sex) %>%
-  dplyr::summarise(mean = mean(number_games), 
-                   max = max(number_games), 
-                   n_obs = dplyr::n(), 
-                   sum = sum(number_games), 
+  dplyr::summarise(`Avg. games` = mean(number_games), 
+                   `Max. games` = max(number_games), 
+                   n = dplyr::n(), 
+                   # sum = sum(number_games), 
                    sd = sd(number_games), 
                    cor = cor(rating, number_games)) %>%
+  dplyr::mutate_if(is.numeric, ~ round(., digits = 2)) %>%
   knitr::kable(format = "latex")
 
 # scatter plot for the difference between rating and the difference in experiene
@@ -79,7 +92,9 @@ data_top_10 %>%
                       names_to = "category") %>%
   ggplot2::ggplot(ggplot2::aes(y = rating_diff, x = value)) + 
   ggplot2::geom_point() + 
-  ggplot2::facet_wrap(~ category, scales = "free")
+  ggplot2::facet_wrap(~ category, scales = "free") + 
+  theme_minimal()
+
 
 
 
@@ -140,7 +155,9 @@ data %>%
   ggplot(aes(x = number_games, y = rating, color = sex)) + 
   geom_point(alpha = 0.3, 
              size = 0.01) + 
-  geom_smooth(method='lm', formula = y ~ x) + 
+  geom_smooth(method='lm', formula = y ~ x,
+              size = 0.4,
+              colour = 'black', alpha = 0.1) + 
   theme_minimal() + 
   labs(title = "Correlation between rating and experience")
 # could be log-shaped instead?
