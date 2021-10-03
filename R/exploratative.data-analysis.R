@@ -92,9 +92,11 @@ hist_F <- world_data %>%
                  colour = "white") + 
   facet_wrap(~ sex) + 
   theme_minimal() +
+  scale_y_continuous(limits = c(0, 0.085)) + 
+  scale_x_continuous(limits = c(1000, 2900)) + 
   labs(y = "Proportion", x = "Rating")
-
-
+  
+  
 hist_M <- world_data %>%
   dplyr::filter(sex == "M") %>%
   dplyr::mutate(sex = "Male") %>%
@@ -103,6 +105,8 @@ hist_M <- world_data %>%
                  colour = "white") + 
   facet_wrap(~ sex) + 
   theme_minimal() + 
+  scale_y_continuous(limits = c(0, 0.085)) +
+  scale_x_continuous(limits = c(1000, 2863)) +
   labs(y = "Proportion", x = "Rating")
 
 hist_F + hist_M
@@ -110,131 +114,168 @@ hist_F + hist_M
 ggsave("results/plots/histograms_ratings_world.png", 
        width = 10, height = 4)
 
-# scatter plot for the mean of women and mean in every country
-# ------------------------------------------------------------------------------
-
-plot_data <- data %>%
-  dplyr::group_by(country, sex) %>%
-  dplyr::summarise(rating = mean(rating)) %>%
-  tidyr::pivot_wider(names_from = sex, 
-                     values_from = rating) %>%
-  dplyr::mutate(difference = M - F) %>%
-  dplyr::inner_join(pvals_mean_rating) %>%
-  dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
-                                   "Significant", 
-                                   "Not significant"))
-
-p <- plot_data %>%
-  ggplot(aes(y = F, x = M)) +
-  geom_point(aes(colour = `P-value`)) +
-  geom_abline(aes(slope = 1, intercept = 0), 
-              linetype = "dashed", color = "grey40") +
-  coord_cartesian(xlim = c(1200, 2200), ylim = c(1200, 2200)) + 
-  labs(y = "Mean rating females", x = "Mean rating males") + 
-  theme_minimal() + 
-  theme(legend.position = "none") + 
-  scale_color_manual(values = c("black", "tomato3")) 
-
-# additional histogram
-inset <- plot_data %>%
-  ggplot(aes(x = difference)) +
-  geom_histogram(aes(y = stat(count) / sum(count)), 
-                 colour = "white", fill = "grey50") + 
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  theme_bw() + 
-  labs(x = "Diff. rating mean", y = "Proportion")  
-
-mean_plot <- p + inset_element(inset, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
-
-ggsave("results/plots/scatter_mean_male_female.png", width = 4, height = 4)
 
 
 
-# scatter plot for the median of women and men in every country
-# ------------------------------------------------------------------------------
-
-plot_data <- data %>%
-  dplyr::group_by(country, sex) %>%
-  dplyr::summarise(rating = median(rating)) %>%
-  tidyr::pivot_wider(names_from = sex, 
-                     values_from = rating) %>%
-  dplyr::inner_join(pvals_median_rating) %>%
-  dplyr::mutate(difference = M - F) %>%
-  dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
-                                   "Significant", 
-                                   "Not significant"))
-
-p <- plot_data %>%
-  ggplot(aes(y = F, x = M)) +
-  geom_point(aes(colour = `P-value`)) +
-  geom_abline(aes(slope = 1, intercept = 0), 
-              linetype = "dashed", color = "grey40") +
-  coord_cartesian(xlim = c(1200, 2200), ylim = c(1200, 2200)) + 
-  labs(y = "Median rating females", x = "Median rating males") + 
-  theme_minimal() + 
-  theme(legend.position = "none") + 
-  scale_color_manual(values = c("black", "tomato3")) 
-
-# additional histogram
-inset <- plot_data %>%
-  ggplot(aes(x = difference)) +
-  geom_histogram(aes(y = stat(count) / sum(count)), 
-                 colour = "white", fill = "grey50") + 
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  theme_bw() + 
-  labs(x = "Diff. rating median", y = "Proportion")  
-
-median_plot <- p + inset_element(inset, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
-
-ggsave("results/plots/scatter_median_male_female.png", 
-       width = 4, height = 4)
 
 
-# scatter plot for the sd of women and mean in every country
-# ------------------------------------------------------------------------------
-plot_data <- data %>%
-  dplyr::group_by(country, sex) %>%
-  dplyr::summarise(rating = sd(rating)) %>%
-  tidyr::pivot_wider(names_from = sex, 
-                     values_from = rating) %>%
-  dplyr::mutate(difference = M - F) %>%
-  dplyr::inner_join(pvals_sd_rating) %>%
-  dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
-                                   "Significant", 
-                                   "Not significant"))
 
-p <- plot_data %>%
-  ggplot(aes(y = F, x = M)) +
-  geom_point(aes(colour = `P-value`)) +
-  geom_abline(aes(slope = 1, intercept = 0), 
-              linetype = "dashed", color = "grey40") +
-  coord_cartesian(xlim = c(160, 450), ylim = c(160, 450)) +
-  labs(y = "SD rating females", x = "SD rating males") + 
-  theme_minimal() + 
-  scale_color_manual(values = c("black", "tomato3")) 
 
-# additional histogram
-inset <- plot_data %>%
-  ggplot(aes(x = difference)) +
-  geom_histogram(aes(y = stat(count) / sum(count)), 
-                 colour = "white", fill = "grey50") + 
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  theme_bw() + 
-  labs(x = "Diff. rating SD", y = "Proportion")  
 
-sd_plot <- p + inset_element(inset, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
 
-ggsave("results/plots/scatter_sd_male_female.png", 
-       width = 4, height = 4)
 
-# combined mean and sd plot ----------------------------------------------------
-p2 <- mean_plot + median_plot + sd_plot + 
-  plot_layout(guides = "collect") &
-  theme(legend.position = 'bottom') 
+scatter_plots <- function(data, top_x = Inf) {
+  
+  # prepare_data <- function(data, summary_function) {
+  #   
+  # }
+  
+  # scatter plot for the mean of women and mean in every country
+  # ------------------------------------------------------------------------------
+  plot_data <- data %>%
+    dplyr::group_by(country, sex) %>%
+    dplyr::arrange(country, sex, rating) %>%
+    slice(1:min(top_x, nrow(data))) %>%
+    dplyr::summarise(rating = mean(rating)) %>%
+    tidyr::pivot_wider(names_from = sex, 
+                       values_from = rating) %>%
+    dplyr::mutate(difference = M - F) %>%
+    dplyr::inner_join(pvals_mean_rating) %>%
+    dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+                                     "Significant", 
+                                     "Not significant"))
+  
+  p1 <- plot_data %>%
+    ggplot(aes(y = F, x = M)) +
+    geom_point(aes(colour = `P-value`)) +
+    geom_abline(aes(slope = 1, intercept = 0), 
+                linetype = "dashed", color = "grey40") +
+    coord_cartesian(xlim = c(1200, 2200), ylim = c(1200, 2200)) + 
+    labs(y = "Mean rating females", x = "Mean rating males") + 
+    theme_minimal() + 
+    theme(legend.position = "none") + 
+    scale_color_manual(values = c("black", "tomato3")) 
+  
+  # additional histogram
+  inset1 <- plot_data %>%
+    ggplot(aes(x = difference)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", fill = "grey50") + 
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    theme_bw() + 
+    labs(x = "Diff. rating mean", y = "Proportion")  
+  
+  mean_plot <- p1 + inset_element(inset1, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
+  
+  # ggsave("results/plots/scatter_mean_male_female.png", width = 4, height = 4)
   
 
-ggsave("results/plots/scatter_combined_male_female.png", 
-       width = 12, height = 4)
+  
+  # scatter plot for the median of women and men in every country
+  # ------------------------------------------------------------------------------
+  plot_data <- data %>%
+    dplyr::group_by(country, sex) %>%
+    dplyr::arrange(country, sex, rating) %>%
+    slice(1:min(top_x, nrow(data))) %>%
+    dplyr::summarise(rating = median(rating)) %>%
+    tidyr::pivot_wider(names_from = sex, 
+                       values_from = rating) %>%
+    dplyr::inner_join(pvals_median_rating) %>%
+    dplyr::mutate(difference = M - F) %>%
+    dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+                                     "Significant", 
+                                     "Not significant"))
+  
+  p2 <- plot_data %>%
+    ggplot(aes(y = F, x = M)) +
+    geom_point(aes(colour = `P-value`)) +
+    geom_abline(aes(slope = 1, intercept = 0), 
+                linetype = "dashed", color = "grey40") +
+    coord_cartesian(xlim = c(1200, 2200), ylim = c(1200, 2200)) + 
+    labs(y = "Median rating females", x = "Median rating males") + 
+    theme_minimal() + 
+    theme(legend.position = "none") + 
+    scale_color_manual(values = c("black", "tomato3"))
+  
+  # additional histogram
+  inset2 <- plot_data %>%
+    ggplot(aes(x = difference)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", fill = "grey50") + 
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    theme_bw() + 
+    labs(x = "Diff. rating median", y = "Proportion")  
+  
+  median_plot2 <- p2 + inset_element(inset2, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
+  
+  # ggsave("results/plots/scatter_median_male_female.png", 
+  #        width = 4, height = 4)
+  
+  
+  # scatter plot for the sd of women and mean in every country
+  # ------------------------------------------------------------------------------
+  plot_data <- data %>%
+    dplyr::group_by(country, sex) %>%
+    dplyr::arrange(country, sex, rating) %>%
+    slice(1:min(top_x, nrow(data))) %>%
+    dplyr::summarise(rating = sd(rating)) %>%
+    tidyr::pivot_wider(names_from = sex, 
+                       values_from = rating) %>%
+    dplyr::mutate(difference = M - F) %>%
+    dplyr::inner_join(pvals_sd_rating) %>%
+    dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+                                     "Significant", 
+                                     "Not significant"))
+  
+  p3 <- plot_data %>%
+    ggplot(aes(y = F, x = M)) +
+    geom_point(aes(colour = `P-value`)) +
+    geom_abline(aes(slope = 1, intercept = 0), 
+                linetype = "dashed", color = "grey40") +
+    coord_cartesian(xlim = c(160, 450), ylim = c(160, 450)) +
+    labs(y = "SD rating females", x = "SD rating males") + 
+    theme_minimal() + 
+    scale_color_manual(values = c("black", "tomato3")) 
+  
+  # additional histogram
+  inset3 <- plot_data %>%
+    ggplot(aes(x = difference)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", fill = "grey50") + 
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    theme_bw() + 
+    labs(x = "Diff. rating SD", y = "Proportion")  
+  
+  sd_plot <- p3 + inset_element(inset3, left = 0.02, bottom = 0.65, right = 0.5, top = 1, ignore_tag = TRUE)
+  
+  # ggsave("results/plots/scatter_sd_male_female.png", 
+  #        width = 4, height = 4)
+  
+  # together ---------------------------------------------------------------------
+  (p1 + p2 + p3) /
+    (inset1 + inset2 + inset3) +
+    plot_layout(guides = "collect", 
+                heights = c(2, 1)) &
+    theme(legend.position = 'bottom') 
+  
+  ggsave(paste0("results/plots/all_scatter_plots-", top_x, ".png"),
+         width = 12, height = 7)
+  
+  
+  # combined mean and sd plot ----------------------------------------------------
+  # p4 <- mean_plot + median_plot + sd_plot + 
+  #   plot_layout(guides = "collect") &
+  #   theme(legend.position = 'bottom') 
+  
+  
+  # ggsave("results/plots/scatter_combined_male_female.png", 
+  #        width = 12, height = 4)  
+  
+}
+
+scatter_plots(data)
+scatter_plots(data, 10)
+
 
 
 
@@ -309,14 +350,6 @@ rating_vs_age_top10 <- data %>%
 
 ggsave("results/plots/scatter_diff_age_rating.png", 
        width = 10, height = 4)
-
-
-
-
-
-
-
-
 
 
 
