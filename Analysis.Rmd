@@ -20,182 +20,9 @@ library(kableExtra)
 
 run_permutations <- FALSE
 n_draws = 100000
-
-regions <- c("FRA", "GER", "RUS", "ESP", "POL", "IND", "IRI", "GRE", "CZE", 
-             "TUR", "HUN", "BRA", "SRI", "SRB", "NED", "ITA", "COL", "UKR",
-             "AUT", "SVK", "CHN", "CRO", "ROU", "MEX", "BEL", "SWE", "ENG", 
-             "KAZ", "CUB", "GEO", "NOR", "USA", "SUI", "VIE", "LTU", "ARG", 
-             "ISR", "DEN", "EGY", "PHI", "BAN", "LAT", "SLO", "CHI", "KEN", 
-             "BUL")
-
-
 ```
 
-
-```{r}
-# data decisions: 
-# use fide data list from Dec 31 2019
-# data downloaded from fide website on October 1 2021 https://ratings.fide.com/download_lists.phtml 
-# include all junior players for main analysis --> no filter on birthday
-# exlude every player who has an "i" or an "wi" flag
-
-# read in and combine data
-chess <- fread("data/ratings20191231_downloaded20211001.csv")
-
-chess2 <- fread("data/unseded-old-data/standard_ratings_jan2020.csv")
-
-nosex <- chess %>%
-  filter(sex == "", 
-         !(flag %in% c("i", "wi"))) %>%
-  pull(fideid)
-
-chess %>%
-  filter(sex == "", 
-         !(flag %in% c("i", "wi"))) %>%
-  pull(fideid)
-
-r1 <- chess %>%
-  filter(fideid %in% nosex) %>%
-  arrange(name) %>%
-  pull(rating) 
-
-r2 <- chess2 %>%
-  filter(fideid %in% nosex) %>%
-  arrange(name) %>%
-  pull(rating) 
-
-
-diff <- r1 - r2
-
-chess %>%
-  filter(fideid %in% nosex) %>%
-  arrange(name) %>%
-  filter(abs(diff) > 50)
-
-chess2 %>%
-  filter(fideid %in% nosex) %>%
-  arrange(name) %>%
-  filter(abs(diff) > 50)
-
-
-data <- chess %>%
-  filter(!(flag %in% c("wi", "i"))) %>%
-  filter(country %in% regions) %>%
-  select(fideid, country, sex, rating, birthday) %>%
-  mutate(age = year(Sys.Date()) - birthday) %>%
-  # we know from the January 2020 rating list that all players with missing sex are malea
-  mutate(sex = ifelse(sex == "", "M", sex))
-
-# fwrite(data, "data/ratings_DEC_2019_cleaned.csv")
-
-```
-
-# Exploratory data analysis
-
-```{r}
-summarise_data <- function(data, n_highest = Inf) {
-  data_summary <- 0
-  data %>%
-    group_by(country) %>%
-    mutate(n_country = n()) %>%
-    group_by(country, sex) %>%
-    arrange(country, desc(rating)) %>%
-    slice_tail(n = n_highest) %>%
-    summarise(mean = mean(rating), 
-              median = median(rating),
-              sd = sd(rating), 
-              median = median(rating),
-              n_country = unique(n_country),
-              n = n(),
-              n_rel = n() / unique(n_country)) %>%
-    ungroup() %>%
-    tidyr::pivot_wider(id_cols = c(country,n_country), 
-                       names_from = sex, 
-                       values_from = c(mean, median, sd, n_rel, n)) %>%
-    mutate(diff_mean = mean_M - mean_F, 
-           diff_median = median_M - median_F)
-}
-
-make_summary_table <- function(data_summary) {
-  data_summary %>%
-  mutate(n_rel_F = n_rel_F * 100) %>%
-  select(Country = country, 
-         N = n_country, 
-         "N \\textit{M}" = n_M, 
-         `N \\textit{F}` = n_F,
-         `\\% \\textit{F}` = n_rel_F,
-         `Mean \\textit{M}` = mean_M, 
-         `Mean \\textit{F}` = mean_F, 
-         `sd \\textit{M}` = sd_M,
-         `sd \\textit{F}` = sd_F
-         ) %>%
-  mutate_if(is.numeric, round, digits = 1) %>%
-  kable(format = "latex", escape = FALSE) %>%
-  kable_styling()
-}
-```
-
-Summary table of all players
-
-```{r}
-data_summary_all <- summarise_data(data)
-make_summary_table(data_summary_all)
-```
-
-
-Summary table of all players
-
-```{r}
-data_summary_10 <- summarise_data(data, n_highest = 10)
-make_summary_table(data_summary_10)
-```
-
-Difference in mean performance vs. share of female players
-
-```{r}
-# scatter plot of average performance difference vs. female participation 
-data_summary_all %>%
-  ggplot(aes(x = diff_mean, y = n_rel_F)) + 
-  geom_point() + 
-  # geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") + 
-  labs(x = "Difference in mean performance men - women", 
-       y = "Percentage of female players in a country") + 
-  geom_smooth(method = "glm", 
-              method.args=list(family="binomial"), 
-              alpha = 0.1, colour = 'black', size = 0.4) + 
-  theme_minimal() + 
-  coord_flip() + 
-  scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
-  expand_limits(x = 0)
-
-ggsave("results/plots/female-participation-performance.png", 
-       width = 10, height = 4)
-```
-
-Difference in median performance vs. share of female players
-
-```{r}
-data_summary_all %>%
-  ggplot(aes(x = diff_median, y = n_rel_F)) + 
-  geom_point() + 
-  # geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") + 
-  labs(x = "Difference in median performance men - women", 
-       y = "Percentage of female players in a country") + 
-  geom_smooth(method = "glm", 
-              method.args=list(family="binomial"), 
-              alpha = 0.1, colour = 'black', size = 0.4) + 
-  theme_minimal() + 
-  coord_flip() + 
-  scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
-  expand_limits(x = 0)
-
-ggsave("results/plots/female-participation-performance-median.png", 
-       width = 10, height = 4)
-
-```
-
-
-# Permutation tests
+# Define a few functions
 
 ```{r permutation-functions, eval = run_permutations}
 # define functions to generate permutation tests to analyse whether the distribution
@@ -229,19 +56,22 @@ permute <- function(scores_female, scores_male, n_highest = 10,
   return(mean_large - mean_small)
 }
 
-apply_permuatation <- function(region, fct = mean) {
+apply_permutation <- function(region, data, fct = mean) {
+  
+  if (region != "all") {
+    data <- data %>%
+      filter(country == region)
+  }
+  
   scores_female <- data %>%
-    dplyr::filter(country == region, 
-                  sex == "F") %>%
+    dplyr::filter(sex == "F") %>%
     dplyr::pull(rating)
   
   scores_male <- data %>%
-    dplyr::filter(country == region, 
-                  sex == "M") %>%
+    dplyr::filter(sex == "M") %>%
     dplyr::pull(rating)
   
   observed_difference <- data %>%
-    dplyr::filter(country == region) %>%
     dplyr::group_by(sex) %>%
     dplyr::arrange(rating) %>%
     dplyr::slice_tail(n = n_highest) %>%
@@ -257,169 +87,85 @@ apply_permuatation <- function(region, fct = mean) {
   res <- data.frame(country = region, 
                     observed_difference = observed_difference, 
                     mean_perm_difference = mean(permuted_differences), 
-                    perc_smaller = mean(permuted_differences <= observed_difference))
+                    pval = 1 - mean(permuted_differences <= observed_difference))
   
   return(res)
+}
+```
+
+
+```{r}
+# function to create a histogram for males and females
+create_histogram <- function(data) {
+  hist_F <- data %>%
+    dplyr::filter(sex == "F") %>%
+    dplyr::mutate(sex = "Female") %>%
+    ggplot(aes(x = rating)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white") + 
+    facet_wrap(~ sex) + 
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 0.1)) + 
+    scale_x_continuous(limits = c(1000, 2900)) + 
+    labs(y = "Proportion", x = "Rating")
   
-}
-```
-
-
-```{r permutation, eval = run_permutations}
-# Run analysis for all, top 10 and top players
-n_highest = 1
-
-results1 <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
-  apply_permuatation(regions[i])
-}
-names(results1) <- c("country", "Obs. top 1", "Expected top 1", "p top 1")
-data.table::fwrite(results1, "results/results_top1.csv")
-
-
-n_highest = 10
-results10 <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
-  apply_permuatation(regions[i])
-}
-names(results10) <- c("country", "Obs. top 10", "Expected top 10", "p top 10")
-data.table::fwrite(results10, "results/results_top10.csv")
-
-
-n_highest = Inf
-results_all <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
-  apply_permuatation(regions[i])
-}
-names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
-data.table::fwrite(results_all, "results/results_all.csv")
-```
-
-
-```{r permutation2, eval = run_permutations}
-# combine data to a single results frame
-results <- merge(merge(results1, results10), results_all)
-
-# change order of regions
-results <- as.data.table(results)
-results <- results[match(regions, country)]
-
-# round values in some of the columns
-cols_to_round <- c("Expected top 1", "Expected top 10", "Expected all", 
-                   "Obs. top 10", "Obs. all")
-results[, c(cols_to_round) := lapply(.SD, round, digits = 1), 
-        .SDcols = cols_to_round]
-
-# return p-values in a more intuitive format
-results[, `:=` ("p top 1" = round(1 - `p top 1`, 3), 
-                "p top 10" = round(1 - `p top 10`, 3), 
-                "p top all" = round(1 - `p all`, 3))]
-
-data.table::fwrite(results, "results/combined_results.csv")
-
-knitr::kable(results, format = "latex")
-```
-
-
-```{r permutation3, eval = run_permutations}
-
-# make another permutation test with the median 
-n_highest = Inf
-results_all_median <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
-  apply_permuatation(regions[i], fct = median)
-}
-data.table::fwrite(results_all_median, "results/results_all_median.csv")
-
-
-# make another permutation test with the standard deviation
-results_all_sd <- foreach(i = 1:length(regions), .combine = 'rbind') %dopar% {
-  apply_permuatation(regions[i], fct = sd)
-}
-data.table::fwrite(results_all_sd, "results/results_all_sd.csv")
-```
-
-
-
-
-
-
-
-# Exploratory Data analysis
-
-```{r}
-# read in permutation data
-pvals_mean_rating <- fread("results/results_all.csv") %>%
-  dplyr::select(country, p_val = `p all`)
-
-pvals_sd_rating <- fread("results/results_all_sd.csv") %>%
-  dplyr::mutate(p_val = 1 - perc_smaller) %>%
-  dplyr::select(country, p_val)
-
-pvals_median_rating <- fread("results/results_all_median.csv") %>%
-  dplyr::mutate(p_val = 1 - perc_smaller) %>%
-  dplyr::select(country, p_val)
-```
-
-
-## Histogram with the distribution of ratings
-
-```{r}
-# histogram of the distribution of ratings -------------------------------------
-hist_F <- data %>%
-  dplyr::filter(sex == "F") %>%
-  dplyr::mutate(sex = "Female") %>%
-  ggplot(aes(x = rating)) +
-  geom_histogram(aes(y = stat(count) / sum(count)), 
-                 colour = "white") + 
-  facet_wrap(~ sex) + 
-  theme_minimal() +
-  scale_y_continuous(limits = c(0, 0.085)) + 
-  scale_x_continuous(limits = c(1000, 2900)) + 
-  labs(y = "Proportion", x = "Rating")
+  hist_M <- data %>%
+    dplyr::filter(sex == "M") %>%
+    dplyr::mutate(sex = "Male") %>%
+    ggplot(aes(x = rating)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white") + 
+    facet_wrap(~ sex) + 
+    theme_minimal() + 
+    scale_y_continuous(limits = c(0, 0.1)) +
+    scale_x_continuous(limits = c(1000, 2900)) +
+    labs(y = "Proportion", x = "Rating")
   
-hist_M <- data %>%
-  dplyr::filter(sex == "M") %>%
-  dplyr::mutate(sex = "Male") %>%
-  ggplot(aes(x = rating)) +
-  geom_histogram(aes(y = stat(count) / sum(count)), 
-                 colour = "white") + 
-  facet_wrap(~ sex) + 
-  theme_minimal() + 
-  scale_y_continuous(limits = c(0, 0.085)) +
-  scale_x_continuous(limits = c(1000, 2863)) +
-  labs(y = "Proportion", x = "Rating")
-
-hist_F + hist_M
-
-ggsave("results/plots/histograms_ratings_world.png", 
-       width = 10, height = 4)
+  hist_all <- hist_F + hist_M
+  
+  return(hist_all)
+}
 ```
 
 
 ```{r}
-scatter_plots <- function(data, top_x = Inf) {
+scatter_plots <- function(data, top_x = Inf, 
+                          pvals_mean_rating, 
+                          pvals_median_rating, 
+                          pvals_sd_rating) {
   
   plot_data <- data %>%
     dplyr::group_by(country, sex) %>%
-    dplyr::arrange(country, sex, rating) %>%
+    dplyr::arrange(country, sex, -rating) %>%
     slice(1:min(top_x, nrow(data))) %>%
     dplyr::summarise(rating = mean(rating)) %>%
-    tidyr::pivot_wider(names_from = sex, 
+    tidyr::pivot_wider(names_from = sex,
                        values_from = rating) %>%
     dplyr::mutate(difference = M - F) %>%
     dplyr::inner_join(pvals_mean_rating) %>%
-    dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
-                                     "Significant", 
+    dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95,
+                                     "Significant",
                                      "Not significant"))
+  
+  # plot_data <- data %>%
+  #   dplyr::mutate(`P-value` = ifelse(p_val < 0.05 | p_val > 0.95, 
+  #                                    "Significant",
+  #                                    "Not significant"))
   
   ylims <- c(floor(min(plot_data$F) / 100) * 100, 
              ceiling(max(plot_data$F) / 100) * 100) 
   xlims <- c(floor(min(plot_data$M) / 100) * 100, 
              ceiling(max(plot_data$M) / 100) * 100) 
   
+  lims = c(min(ylims[1], xlims[1]), 
+           max(ylims[2], xlims[2]))
+  
   p1 <- plot_data %>%
     ggplot(aes(y = F, x = M)) +
     geom_point(aes(colour = `P-value`)) +
     geom_abline(aes(slope = 1, intercept = 0), 
                 linetype = "dashed", color = "grey40") +
-    coord_cartesian(xlim = xlims, ylim = ylims) + 
+    coord_cartesian(xlim = lims, ylim = lims) + 
     labs(y = "Mean rating females", x = "Mean rating males") + 
     theme_minimal() + 
     theme(legend.position = "none") + 
@@ -445,7 +191,7 @@ scatter_plots <- function(data, top_x = Inf) {
   # ------------------------------------------------------------------------------
   plot_data <- data %>%
     dplyr::group_by(country, sex) %>%
-    dplyr::arrange(country, sex, rating) %>%
+    dplyr::arrange(country, sex, -rating) %>%
     slice(1:min(top_x, nrow(data))) %>%
     dplyr::summarise(rating = median(rating)) %>%
     tidyr::pivot_wider(names_from = sex, 
@@ -461,7 +207,7 @@ scatter_plots <- function(data, top_x = Inf) {
     geom_point(aes(colour = `P-value`)) +
     geom_abline(aes(slope = 1, intercept = 0), 
                 linetype = "dashed", color = "grey40") +
-    coord_cartesian(xlim = xlims, ylim = ylims) + 
+    coord_cartesian(xlim = lims, ylim = lims) + 
     labs(y = "Median rating females", x = "Median rating males") + 
     theme_minimal() + 
     theme(legend.position = "none") + 
@@ -486,7 +232,7 @@ scatter_plots <- function(data, top_x = Inf) {
   # ------------------------------------------------------------------------------
   plot_data <- data %>%
     dplyr::group_by(country, sex) %>%
-    dplyr::arrange(country, sex, rating) %>%
+    dplyr::arrange(country, sex, -rating) %>%
     slice(1:min(top_x, nrow(data))) %>%
     dplyr::summarise(rating = sd(rating)) %>%
     tidyr::pivot_wider(names_from = sex, 
@@ -502,12 +248,15 @@ scatter_plots <- function(data, top_x = Inf) {
   xlims <- c(floor(min(plot_data$M) / 10) * 10, 
              ceiling(max(plot_data$M) / 10) * 10) 
   
+  lims = c(min(ylims[1], xlims[1]), 
+           max(ylims[2], xlims[2]))
+  
   p3 <- plot_data %>%
     ggplot(aes(y = F, x = M)) +
     geom_point(aes(colour = `P-value`)) +
     geom_abline(aes(slope = 1, intercept = 0), 
                 linetype = "dashed", color = "grey40") +
-    coord_cartesian(xlim = xlims, ylim = ylims) +
+    coord_cartesian(xlim = lims, ylim = lims) +
     labs(y = "SD rating females", x = "SD rating males") + 
     theme_minimal() + 
     scale_color_manual(values = c("black", "tomato3")) 
@@ -539,30 +288,424 @@ scatter_plots <- function(data, top_x = Inf) {
     theme(legend.position = 'bottom') 
 }
 
-scatter_plots(data)
-ggsave(paste0("results/plots/all_scatter_plots-all.png"),
-         width = 12, height = 7)
+# scatter_plots(data)
+# ggsave(paste0("results/plots/all_scatter_plots-all.png"),
+#          width = 12, height = 7)
+# 
+# scatter_plots(data, 10)
+# ggsave(paste0("results/plots/all_scatter_plots-top-10.png"),
+#          width = 12, height = 7)
+# 
+# scatter_plots(data, 1)
+# ggsave(paste0("results/plots/all_scatter_plots-top-1.png"),
+#          width = 12, height = 7)
+```
 
-scatter_plots(data, 10)
-ggsave(paste0("results/plots/all_scatter_plots-top-10.png"),
-         width = 12, height = 7)
 
-scatter_plots(data, 1)
-ggsave(paste0("results/plots/all_scatter_plots-top-1.png"),
-         width = 12, height = 7)
+```{r}
+# function to create a summary table
+summarise_data <- function(data, n_highest = Inf) {
+  data %>%
+    group_by(country, sex) %>%
+    arrange(country, rating) %>%
+    slice_tail(n = n_highest) %>%
+    group_by(country) %>%
+    mutate(n_country = n()) %>%
+    group_by(country, sex) %>%
+    summarise(mean = mean(rating), 
+              median = median(rating),
+              sd = sd(rating), 
+              median = median(rating),
+              n_country = unique(n_country),
+              n = n(),
+              n_rel = n() / unique(n_country)) %>%
+    ungroup() %>%
+    tidyr::pivot_wider(id_cols = c(country,n_country), 
+                       names_from = sex, 
+                       values_from = c(mean, median, sd, n_rel, n)) %>%
+    mutate(diff_mean = mean_M - mean_F, 
+           diff_median = median_M - median_F)
+}
+```
+
+
+
+# Filter data
+
+```{r}
+# data decisions: 
+# use fide data list from Dec 31 2019
+# data downloaded from fide website on October 1 2021 https://ratings.fide.com/download_lists.phtml 
+# include all junior players for main analysis --> no filter on birthday
+# exlude every player who has an "i" or an "wi" flag
+
+# read in data
+chess <- fread("data/ratings20191231_downloaded20211001.csv")
+
+# compute age from birthday
+# filter out
+# - those who do not have a sex given
+# - those who are inactive
+# - countries with fewer than 10 FIDE rated players
+worldwide <- chess %>%
+  mutate(age = year(Sys.Date()) - birthday) %>%
+  group_by(country) %>%
+  filter(sex != "", 
+         !(flag %in% c("i", "wi"))) 
+
+countries_worldwide <- worldwide$country %>% 
+  unique()
+
+  
+# for country-by-country data filter countries with less than 30 female players
+# technically this is at least either 30 men or women
+countries_with_30_females <- worldwide %>%
+  filter(sex == "F") %>%
+  group_by(country) %>%
+  summarise(n = n()) %>%
+  filter(n >= 30) %>%
+  pull(country)
+
+# World Bank version of these country names
+wb_countrycodes <- countrycode::countrycode(
+  countries_with_30_females, origin = "ioc", 
+  destination = "wb"
+) 
+wb_countrycodes[is.na(wb_countrycodes)] <- "GBR"
+  
+
+country_by_country <- worldwide %>%
+  filter(country %in% countries_with_30_females)
+```
+
+# Analyis on the worldwide level
+
+```{r}
+# numer of countries
+worldwide$country %>% 
+  unique() %>%
+  length()
+
+# mean ratings men and women
+worldwide %>%
+  group_by(sex) %>%
+  summarise(mean_rating = mean(rating)) |>
+  pull(mean_rating) |>
+  diff()
+
+# histogram of men and women 
+hist <- create_histogram(worldwide)
+
+ggsave(plot = hist, file = "results/plots/histograms_ratings_world.png", 
+       width = 6, height = 3)
+
+# permutation test to compare the means of males and females
+if (run_permutations) {
+  # done
+  n_highest = Inf
+  perm_mean_world <- apply_permutation(region = "all", data = worldwide)
+  data.table::fwrite(perm_mean_world, "results/results_mean_world.csv")
+}
+
+wilcox.test(rating ~ sex, data = worldwide)
+
+data.table::fread("results/results_mean_world.csv")
+
+```
+
+# Permutation analysis for all players (using the country_by_country data)
+
+```{r}
+# number of countries
+country_by_country$country %>% 
+  unique() %>%
+  length()
+
+# number of countries where mean male was higher than mean female
+country_by_country %>%
+  group_by(country, sex) %>%
+  summarise(mean_rating = mean(rating)) %>%
+  pivot_wider(names_from = sex, values_from = mean_rating) %>%
+  mutate(male_advantage = M > F) %>%
+  pull(male_advantage) %>%
+  sum()
+
+# permutation tests on the mean 
+if (run_permutations) {
+  # done
+  n_highest = Inf
+  countries <- unique(country_by_country$country)
+  results_all <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country)
+  }
+  names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_all, "results/results_all.csv")
+}
+
+# permutations median
+if (run_permutations) {
+  # done
+  n_highest = Inf
+  countries <- unique(country_by_country$country)
+  results_all <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country, fct = median)
+  }
+  names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_all, "results/results_all_median.csv")
+}
+
+# permutations sd
+if (run_permutations) {
+  # done
+  n_highest = Inf
+  countries <- unique(country_by_country$country)
+  results_all <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country, fct = sd)
+  }
+  names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_all, "results/results_all_sd.csv")
+}
+
+# check how many p-values are significant for the 
+results_all <- fread("results/results_all.csv")
+results_all %>%
+  filter(`p all` < 0.05)  %>%
+  pull(`p all`) %>%
+  length()
+
+pvals_mean <- fread("results/results_all.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+pvals_median <- fread("results/results_all_median.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+pvals_sd <- fread("results/results_all_sd.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+# scatter plots with differences and significance
+scatter_plots(df, pvals_mean_rating = pvals_mean, 
+              pvals_sd_rating = pvals_sd, pvals_median_rating = pvals_median)
+
+ggsave("results/plots/all_scatter_plots-all.png", height = 4, width = 7)
+
+
+
+# Kolmogorov-Smirnoff-test on p-values for the mean
+ks.test(x = pvals_mean$p_val, y = "punif")
+
+# Kolmogorov-Smirnoff-test on p-values for the standard deviation
+ks.test(x = pvals_sd$p_val, y = "punif")
+
+```
+
+
+# Permutation analyses top 10 players using the country by country data
+
+```{r}
+# permutation tests on the mean 
+if (run_permutations) {
+  n_highest = 10
+  countries <- unique(country_by_country$country)
+  results_top10 <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country)
+  }
+  names(results_top10) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_top10, "results/results_top10_mean.csv")
+}
+
+# permutations median
+if (run_permutations) {
+  n_highest = 10
+  countries <- unique(country_by_country$country)
+  results_all <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country, fct = median)
+  }
+  names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_all, "results/results_top10_median.csv")
+}
+
+# permutations sd
+if (run_permutations) {
+  n_highest = 10
+  countries <- unique(country_by_country$country)
+  results_all <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country, fct = sd)
+  }
+  names(results_all) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_all, "results/results_top10_sd.csv")
+}
+
+
+results_all <- fread("results/results_top10_mean.csv")
+results_all %>%
+  filter(`p all` < 0.05) %>%
+  pull(`p all`) %>%
+  length()
+
+
+pvals_mean <- fread("results/results_top10_mean.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+pvals_median <- fread("results/results_top10_median.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+pvals_sd <- fread("results/results_top10_sd.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+# scatter plots with differences and significance
+scatter_plots(country_by_country, pvals_mean_rating = pvals_mean, 
+              pvals_sd_rating = pvals_sd, pvals_median_rating = pvals_median, 
+              top_x = 10)
+
+ggsave("results/plots/all_scatter_plots-top10.png", height = 4, width = 7)
+```
+
+
+
+# Permutation analyses top 1 players using the country by country data
+
+```{r}
+# permutation tests on the mean 
+if (run_permutations) {
+  n_highest = 1
+  countries <- unique(country_by_country$country)
+  results_top1 <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country)
+  }
+  names(results_top1) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_top1, "results/results_top1_mean.csv")
+}
+
+# permutations median
+if (run_permutations) {
+  n_highest = 1
+  countries <- unique(country_by_country$country)
+  results_top1 <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country, fct = median)
+  }
+  names(results_top1) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_top1, "results/results_top1_median.csv")
+}
+
+# permutations sd
+if (run_permutations) {
+  n_highest = 1
+  countries <- unique(country_by_country$country)
+  results_top1 <- foreach(i = 1:length(countries), .combine = 'rbind') %dopar% {
+    apply_permutation(region = countries[i], data = country_by_country, fct = sd)
+  }
+  names(results_top1) <- c("country", "Obs. all", "Expected all", "p all")
+  data.table::fwrite(results_top1, "results/results_top1_sd.csv")
+}
+
+
+results_all <- fread("results/results_all.csv")
+results_all %>%
+  filter(`p all` < 0.05) %>%
+  pull(`p all`) %>%
+  length()
+
+
+
+pvals_mean <- fread("results/results_top1_mean.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+pvals_median <- fread("results/results_top1_median.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+pvals_sd <- fread("results/results_top1_sd.csv") |>
+  rename(p_val = `p all`) |>
+  select(p_val, country)
+
+# scatter plots with differences and significance
+scatter_plots(country_by_country, pvals_mean_rating = pvals_mean, 
+              pvals_sd_rating = pvals_sd, pvals_median_rating = pvals_median, 
+              top_x = 1)
+
+ggsave("results/plots/all_scatter_plots-top1.png", height = 4, width = 7)
+
+
 ```
 
 
 
 
+# Difference in mean performance vs. share of female players
 
 
 
+```{r}
+# scatter plot of average performance difference vs. female participation 
+country_by_country %>%
+  summarise_data() %>%
+  ggplot(aes(x = diff_mean, y = n_rel_F)) + 
+  geom_point() + 
+  labs(x = "Diff. mean rating men - women", 
+       y = "Percentage of female players in a country") + 
+  geom_smooth(method = "glm", 
+              method.args=list(family="binomial"), 
+              alpha = 0.1, colour = 'grey', size = 0.4) + 
+  theme_minimal() + 
+  coord_flip() + 
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
+  expand_limits(x = 0) + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+ggsave("results/plots/female-participation-performance.png", 
+       width = 7, height = 4)
+
+# check correlation
+df <- country_by_country %>%
+  summarise_data() %>%
+  select(diff_mean, n_rel_F) 
+
+x <- df$diff_mean
+y <- df$n_rel_F
+
+cor.test(x, y)
 
 
+# same for median
+country_by_country %>%
+  summarise_data() %>%
+  ggplot(aes(x = diff_median, y = n_rel_F)) + 
+  geom_point() + 
+  labs(x = "Diff. median rating men - women", 
+       y = "Percentage of female players in a country") + 
+  geom_smooth(method = "glm", 
+              method.args=list(family="binomial"), 
+              alpha = 0.1, colour = 'grey', size = 0.4) + 
+  theme_minimal() + 
+  coord_flip() + 
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
+  expand_limits(x = 0) + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+# check correlation
+df <- country_by_country %>%
+  summarise_data() %>%
+  select(diff_median, n_rel_F) 
+
+x <- df$diff_median
+y <- df$n_rel_F
+
+cor.test(x, y)
+
+ggsave("results/plots/female-participation-performance-median.png", 
+       width = 7, height = 4)
+
+```
 
 
-
+# Permutation tests
 
 
 
@@ -571,14 +714,14 @@ ggsave(paste0("results/plots/all_scatter_plots-top-1.png"),
 
 ```{r}
 # mean age plot for the countries ----------------------------------------------
-plot_data <- data %>%
+age_men_women <- country_by_country %>%
   dplyr::group_by(country, sex) %>%
+  dplyr::arrange(-rating) %>%
+  dplyr::slice_head(n = 10) %>%
   dplyr::summarise(age = mean(2021 - birthday, na.rm = TRUE)) %>%
   tidyr::pivot_wider(names_from = sex, 
                      values_from = age) %>%
-  dplyr::mutate(difference = M - F) 
-
-mean_age <- plot_data %>%
+  dplyr::mutate(difference = M - F) %>%
   ggplot(aes(y = F, x = M)) +
   geom_point() +
   geom_abline(aes(slope = 1, intercept = 0), 
@@ -589,57 +732,123 @@ mean_age <- plot_data %>%
 
 
 # relationship between age and rating ------------------------------------------
-
-data %>%
-  dplyr::mutate(age = 2021 - birthday) %>%
-  ggplot(aes(y = rating, x = age)) + 
-  theme_minimal()
-
 # for top 10: age vs. ratings
-agetop10 <- data %>%
+agetop10 <- country_by_country %>%
   dplyr::group_by(country, sex) %>%
   dplyr::arrange(-rating) %>%
-  dplyr::slice(10) %>%
+  dplyr::slice_head(n = 10) %>%
   dplyr::mutate(age = 2021 - birthday) %>%
-  ggplot(aes(y = rating, x = age)) + 
-  geom_point(aes(color = sex)) + 
+  summarise(age = mean(age), rating = mean(rating)) %>%
+  rename(Sex = sex) %>%
+  ggplot(aes(y = rating, x = age, group = Sex, fill = Sex, color = Sex)) + 
+  geom_smooth(alpha = 0.1, size = 0.5) + 
+  geom_point() + 
   theme_minimal() + 
   labs(y = "Rating top 10", x = "Average age top 10")
 
 ggsave("results/plots/scatter_age_rating.png")
 
-
-# combine age plots
-mean_age + agetop10 + 
-  plot_annotation(tag_levels = 'A')
-
-ggsave("results/plots/scatter_combined_age.png", 
-       width = 12, height = 4)
-
 # plot with age difference vs. rating difference for top 10. not so sure
-rating_vs_age_top10 <- data %>%
+rating_vs_age_top10 <- country_by_country %>%
   dplyr::group_by(country, sex) %>%
   dplyr::arrange(-rating) %>%
-  dplyr::slice(10) %>%
+  dplyr::slice_head(n = 10) %>%
   dplyr::mutate(age = 2021 - birthday) %>%
-  dplyr::summarise(age = mean(age), 
+  dplyr::summarise(age = mean(age, na.rm = TRUE), 
                    rating = mean(rating)) %>%
   tidyr::pivot_wider(names_from = sex, values_from = c(age, rating)) %>%
   dplyr::mutate(age_diff = age_M - age_F, 
                 rating_diff = rating_M - rating_F, 
-                `Avg. man older` = age_diff > 0) %>% 
+                `Avg. man older` = age_diff > 0) %>%
   ggplot(aes(y = rating_diff, x = age_diff)) + 
   geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") + 
   geom_point(aes(color = `Avg. man older`)) + 
   geom_smooth(method = "lm", se = TRUE, 
               size = 0.4,
-              colour = 'black', alpha = 0.1) + 
+              colour = 'grey', alpha = 0.1) + 
   theme_minimal() + 
   labs(y = "Rating difference", x = "Age difference")
 
-ggsave("results/plots/scatter_diff_age_rating.png", 
-       width = 10, height = 4)
+
+
+# combine age plots
+age_men_women + agetop10 +  rating_vs_age_top10 +
+  plot_layout(widths = c(1, 1, 1.5), guides = "collect") &
+  theme(legend.position = "bottom") &
+  plot_annotation(tag_levels = 'A')
+
+ggsave("results/plots/scatter_combined_age.png", 
+       width = 9, height = 3.5)
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Summary tables
+
+```{r}
+make_summary_table <- function(data_summary) {
+  data_summary %>%
+  mutate(n_rel_F = n_rel_F * 100) %>%
+  select(Country = country, 
+         N = n_country, 
+         "N \\textit{M}" = n_M, 
+         `N \\textit{F}` = n_F,
+         `\\% \\textit{F}` = n_rel_F,
+         `Mean \\textit{M}` = mean_M, 
+         `Mean \\textit{F}` = mean_F, 
+         `sd \\textit{M}` = sd_M,
+         `sd \\textit{F}` = sd_F
+         ) %>%
+  mutate_if(is.numeric, round, digits = 1) %>%
+  kable(format = "latex", escape = FALSE) %>%
+  kable_styling()
+}
+```
+
+Summary table of all players
+
+```{r}
+data_summary_all <- summarise_data(data)
+make_summary_table(data_summary_all)
+```
+
+
+Summary table of top 10 players
+
+```{r}
+data_summary_10 <- summarise_data(data, n_highest = 10)
+make_summary_table(data_summary_10)
+```
+
 
 
 
