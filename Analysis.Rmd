@@ -38,7 +38,7 @@ n_draws = 100000
 ```
 
 # Define a few functions
-
+960 * 3
 ```{r permutation-functions, eval = run_permutations}
 # define functions to generate permutation tests to analyse whether the distribution
 # of top women and men can be explained by pure chance
@@ -436,7 +436,7 @@ if (run_permutations) {
 
 ```{r}
 # WMW test for the different countries
-wmw <- data.table::copy(country_by_country)
+wmw <- data.table::copy(country_by_country) %>%
 setDT(wmw)
 wmw <- split(wmw, by = "country")
 
@@ -526,8 +526,9 @@ if (run_permutations) {
   data.table::fwrite(results_all, "results/results_all_sd.csv")
 }
 
-# p-values
+# two sided p-values, computed as suggested by Weiji
 pvals_mean <- fread("results/results_all.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
@@ -539,6 +540,7 @@ pvals_mean %>%
 ks.test(x = pvals_mean$p_val, y = "punif")
 
 pvals_median <- fread("results/results_all_median.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
@@ -549,6 +551,7 @@ pvals_median %>%
 ks.test(x = pvals_median$p_val, y = "punif")
 
 pvals_sd <- fread("results/results_all_sd.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
@@ -609,20 +612,23 @@ if (run_permutations) {
 
 results_all <- fread("results/results_top10_mean.csv")
 results_all %>%
-  filter(`p all` < 0.025 | `p all` > 0.975) %>%
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   pull(`p all`) %>%
   length()
 
 
 pvals_mean <- fread("results/results_top10_mean.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 pvals_median <- fread("results/results_top10_median.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 pvals_sd <- fread("results/results_top10_sd.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
@@ -676,7 +682,7 @@ if (run_permutations) {
 results_all <- fread("results/results_top1_mean.csv")
 # number of significant countries
 results_all %>%
-  filter(`p all` < 0.025 | `p all` > 0.975)
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) 
 
 # mean difference expected vs. real
 results_all |>
@@ -684,16 +690,19 @@ results_all |>
             diff_sd = sd(`Expected all` - `Obs. all`))
 
 pvals_mean <- fread("results/results_top1_mean.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 ks.test(pvals_mean$p_val, y = "punif")
 
 pvals_median <- fread("results/results_top1_median.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 pvals_sd <- fread("results/results_top1_sd.csv") |>
+  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
@@ -720,8 +729,8 @@ country_by_country %>%
   summarise_data() %>%
   ggplot(aes(x = diff_mean, y = n_rel_F)) + 
   geom_point(size = 0.8) + 
-  labs(x = "\u0394 mean rating M - F", 
-       y = "Percentage of female players in a country") + 
+  labs(x = "\u0394 mean rating men - women", 
+       y = "Percentage of women in a country") + 
   geom_smooth(method = "glm", 
               method.args=list(family="binomial"), 
               alpha = 0.1, colour = 'grey', size = 0.4) + 
@@ -755,7 +764,7 @@ country_by_country %>%
   ggplot(aes(x = diff_median, y = n_rel_F)) + 
   geom_point() + 
   labs(x = "\u0394 median rating men - women", 
-       y = "Percentage of female players in a country") + 
+       y = "Percentage of women in a country") + 
   geom_smooth(method = "glm", 
               method.args=list(family="binomial"), 
               alpha = 0.1, colour = 'grey', size = 0.4) + 
@@ -795,7 +804,7 @@ age_men_women <- country_by_country %>%
               linetype = "dashed", color = "grey40") +
   coord_cartesian(xlim = c(18, 47), ylim = c(18, 47)) + 
   # theme_minimal() + 
-  labs(y = "Mean age female", x = "Mean age male")
+  labs(y = "Mean age women", x = "Mean age men")
 
 
 # relationship between age and rating ------------------------------------------
@@ -803,11 +812,12 @@ age_men_women <- country_by_country %>%
 agetop10 <- country_by_country %>%
   dplyr::group_by(country, sex) %>%
   dplyr::arrange(-rating) %>%
+  dplyr::mutate(Gender = ifelse(sex == "M", "M", "W")) %>%
   dplyr::slice_head(n = 10) %>%
   dplyr::mutate(age = 2021 - birthday) %>%
+  dplyr::group_by(country, Gender) %>%
   summarise(age = mean(age), rating = mean(rating)) %>%
-  rename(Sex = sex) %>%
-  ggplot(aes(y = rating, x = age, group = Sex, fill = Sex, color = Sex)) + 
+  ggplot(aes(y = rating, x = age, group = Gender, fill = Gender, color = Gender)) + 
   geom_smooth(alpha = 0.1, size = 0.5) + 
   geom_point(size = 0.8) + 
   scale_color_manual(values = c("olivedrab", "royalblue3")) + 
@@ -836,7 +846,7 @@ rating_vs_age_top10 <- country_by_country %>%
               size = 0.4,
               colour = 'grey', alpha = 0.1) + 
   scale_x_continuous(breaks = c(-5, 0, 5, 10, 15)) + 
-  labs(y = "\u0394 mean rating M - F", x = "\u0394 mean age M - F")
+  labs(y = "\u0394 mean rating men - women", x = "\u0394 mean age men - women")
 
 
 
