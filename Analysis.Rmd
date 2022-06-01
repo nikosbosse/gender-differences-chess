@@ -112,7 +112,7 @@ apply_permutation <- function(region, data, fct = mean) {
 create_histogram <- function(data) {
   hist_F <- data %>%
     dplyr::filter(sex == "F") %>%
-    dplyr::mutate(sex = "Female") %>%
+    dplyr::mutate(sex = "Women") %>%
     ggplot(aes(x = rating)) +
     geom_histogram(aes(y = stat(count) / sum(count)), 
                    colour = "white") + 
@@ -124,7 +124,7 @@ create_histogram <- function(data) {
   
   hist_M <- data %>%
     dplyr::filter(sex == "M") %>%
-    dplyr::mutate(sex = "Male") %>%
+    dplyr::mutate(sex = "Men") %>%
     ggplot(aes(x = rating)) +
     geom_histogram(aes(y = stat(count) / sum(count)), 
                    colour = "white") + 
@@ -201,7 +201,7 @@ scatter_plots <- function(data, top_x = Inf,
   lims <- get_lims(plot_data_median)
   
   p1 <- scatter(plot_data_mean) + 
-    labs(y = "Mean rating females", x = "Mean rating males")
+    labs(y = "Mean rating women", x = "Mean rating men")
   
   inset1 <- inset_plot(plot_data_mean) +
     labs(x = "\u0394 mean rating", y = "Proportion")  
@@ -210,7 +210,7 @@ scatter_plots <- function(data, top_x = Inf,
   # ------------------------------------------------------------------------------
   p2 <- plot_data_median %>%
     scatter() + 
-    labs(y = "Median rating females", x = "Median rating males")
+    labs(y = "Median rating women", x = "Median rating men")
   
   # additional histogram
   inset2 <- plot_data_median %>%
@@ -227,7 +227,7 @@ scatter_plots <- function(data, top_x = Inf,
   
   p3 <- plot_data_sd %>%
     scatter() + 
-    labs(y = "SD rating females", x = "SD rating males") 
+    labs(y = "SD rating women", x = "SD rating men") 
   # + 
   #   scale_x_continuous(breaks = c(50, ))
   
@@ -280,7 +280,8 @@ summarise_data <- function(data, n_highest = Inf) {
                        names_from = sex, 
                        values_from = c(mean, median, sd, n_rel, n)) %>%
     mutate(diff_mean = mean_M - mean_F, 
-           diff_median = median_M - median_F)
+           diff_median = median_M - median_F, 
+           diff_df = sd_M - sd_F)
 }
 ```
 
@@ -368,6 +369,7 @@ worldwide %>%
 worldwide |>
   summarise_data()
 
+# FIGURE 1
 # histogram of men and women 
 hist <- create_histogram(worldwide) + 
   theme(axis.text.y = element_blank(), 
@@ -489,7 +491,6 @@ country_by_country %>%
   mutate(male_higher = M > F) %>%
   filter(male_higher) 
 
-
 # permutation tests on the mean 
 if (run_permutations) {
   # done
@@ -526,37 +527,40 @@ if (run_permutations) {
   data.table::fwrite(results_all, "results/results_all_sd.csv")
 }
 
+
+# FIGURE 2
+
 # two sided p-values, computed as suggested by Weiji
 pvals_mean <- fread("results/results_all.csv") |>
-  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
+  mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 # number significant
 pvals_mean %>%
-  filter(p_val > 0.025)
+  filter(p_val > 0.05)
 
 # Kolmogorov-Smirnoff-test on p-values for the mean
 ks.test(x = pvals_mean$p_val, y = "punif")
 
 pvals_median <- fread("results/results_all_median.csv") |>
-  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
+  mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 pvals_median %>%
-  filter(p_val < 0.025)
+  filter(p_val > 0.05)
 
 # Kolmogorov-Smirnoff-test on p-values for the median
 ks.test(x = pvals_median$p_val, y = "punif")
 
 pvals_sd <- fread("results/results_all_sd.csv") |>
-  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
+  mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 pvals_sd %>%
-  filter(p_val < 0.025 | p_val > 0.975)
+  filter(p_val > 0.05)
 
 # Kolmogorov-Smirnoff-test on p-values for the standard deviation
 ks.test(x = pvals_sd$p_val, y = "punif")
@@ -612,18 +616,18 @@ if (run_permutations) {
 
 results_all <- fread("results/results_top10_mean.csv")
 results_all %>%
-  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
+  mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
   pull(`p all`) %>%
   length()
 
 
 pvals_mean <- fread("results/results_top10_mean.csv") |>
-  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
+  mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
 pvals_median <- fread("results/results_top10_median.csv") |>
-  mutate(`p all` = 2 * min(`p all`, 1 - `p all`)) %>%
+  mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
   rename(p_val = `p all`) |>
   select(p_val, country)
 
@@ -725,8 +729,12 @@ ggsave("results/plots/all_scatter_plots-top1.png", height = 4, width = 7)
 
 ```{r}
 # scatter plot of average performance difference vs. female participation 
-country_by_country %>%
-  summarise_data() %>%
+
+# Figure 3
+df <- country_by_country %>%
+  summarise_data() 
+
+p_mean <- df %>%
   ggplot(aes(x = diff_mean, y = n_rel_F)) + 
   geom_point(size = 0.8) + 
   labs(x = "\u0394 mean rating men - women", 
@@ -740,8 +748,44 @@ country_by_country %>%
   expand_limits(x = 0) + 
   geom_vline(xintercept = 0, linetype = "dashed")
 
+p_median <- df %>%
+  ggplot(aes(x = diff_median, y = n_rel_F)) + 
+  geom_point(size = 0.8) + 
+  labs(x = "\u0394 median rating men - women", 
+       y = "Percentage of women in a country") + 
+  geom_smooth(method = "glm", 
+              method.args=list(family="binomial"), 
+              alpha = 0.1, colour = 'grey', size = 0.4) + 
+  # theme_minimal() + 
+  coord_flip() + 
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
+  expand_limits(x = 0) + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+p_mean + p_median &
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom") &
+  plot_annotation(tag_levels = 'A') &
+  xlim(c(0, 470))
+
 ggsave("results/plots/female-participation-performance.png", 
        width = 3.5, height = 2)
+
+
+p_sd <- df %>%
+  ggplot(aes(x = diff_df, y = n_rel_F)) + 
+  geom_point(size = 0.8) + 
+  labs(x = "\u0394 sd rating men - women", 
+       y = "Percentage of women in a country") + 
+  geom_smooth(method = "glm", 
+              method.args=list(family="binomial"), 
+              alpha = 0.1, colour = 'grey', size = 0.4) + 
+  # theme_minimal() + 
+  coord_flip() + 
+  scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
+  expand_limits(x = 0) + 
+  geom_vline(xintercept = 0, linetype = "dashed")
+
 
 # check correlation between difference in performance and share of women
 df <- country_by_country %>%
@@ -789,12 +833,14 @@ ggsave("results/plots/female-participation-performance-median.png",
 
 
 ```{r}
+# Figure 4
+
 # mean age plot for the countries ----------------------------------------------
 age_men_women <- country_by_country %>%
   dplyr::group_by(country, sex) %>%
   dplyr::arrange(-rating) %>%
   dplyr::slice_head(n = 10) %>%
-  dplyr::summarise(age = mean(2021 - birthday, na.rm = TRUE)) %>%
+  dplyr::summarise(age = mean(2022 - birthday, na.rm = TRUE)) %>%
   tidyr::pivot_wider(names_from = sex, 
                      values_from = age) %>%
   dplyr::mutate(difference = M - F) %>%
@@ -814,7 +860,7 @@ agetop10 <- country_by_country %>%
   dplyr::arrange(-rating) %>%
   dplyr::mutate(Gender = ifelse(sex == "M", "M", "W")) %>%
   dplyr::slice_head(n = 10) %>%
-  dplyr::mutate(age = 2021 - birthday) %>%
+  dplyr::mutate(age = 2022 - birthday) %>%
   dplyr::group_by(country, Gender) %>%
   summarise(age = mean(age), rating = mean(rating)) %>%
   ggplot(aes(y = rating, x = age, group = Gender, fill = Gender, color = Gender)) + 
@@ -827,17 +873,25 @@ agetop10 <- country_by_country %>%
 ggsave("results/plots/scatter_age_rating.png")
 
 # plot with age difference vs. rating difference for top 10. not so sure
+
+# load expected
+expected <- fread("results/results_top10_mean.csv") %>%
+  rename(Expected = `Expected all`) %>%
+  select(country, Expected)
+
 rating_vs_age_top10 <- country_by_country %>%
   dplyr::group_by(country, sex) %>%
   dplyr::arrange(-rating) %>%
   dplyr::slice_head(n = 10) %>%
-  dplyr::mutate(age = 2021 - birthday) %>%
+  dplyr::mutate(age = 2022 - birthday) %>%
   dplyr::summarise(age = mean(age, na.rm = TRUE), 
                    rating = mean(rating)) %>%
   tidyr::pivot_wider(names_from = sex, values_from = c(age, rating)) %>%
   dplyr::mutate(age_diff = age_M - age_F, 
                 rating_diff = rating_M - rating_F, 
                 `Avg. man older` = age_diff > 0) %>%
+  inner_join(expected) %>%
+  mutate(rating_diff = rating_diff - Expected) %>%
   ggplot(aes(y = rating_diff, x = age_diff)) + 
   geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") + 
   geom_point(size = 0.8) + 
@@ -846,7 +900,7 @@ rating_vs_age_top10 <- country_by_country %>%
               size = 0.4,
               colour = 'grey', alpha = 0.1) + 
   scale_x_continuous(breaks = c(-5, 0, 5, 10, 15)) + 
-  labs(y = "\u0394 mean rating men - women", x = "\u0394 mean age men - women")
+  labs(y = "Observed \u0394 (mean rating M - F) - expected \u0394", x = "\u0394 mean age men - women")
 
 
 
