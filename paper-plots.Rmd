@@ -1,0 +1,555 @@
+---
+title: "Paper version gender differences in chess"
+output: html_document
+date: "2022-10-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(data.table)
+library(ggplot2)
+library(foreach)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+library(kableExtra)
+library(cowplot)
+library(ggtext)
+
+theme_set(
+  theme_minimal() +
+    theme(axis.line = element_line(colour = "grey80"),
+          axis.ticks = element_line(colour = "grey80"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+)
+
+```
+
+
+```{r}
+# data decisions main analysis: 
+# use fide data list from Dec 31 2019
+# data downloaded from fide website on October 1 2021 https://ratings.fide.com/download_lists.phtml 
+# include all junior players for main analysis --> no filter on birthday
+# exlude every player who has an "i" or an "wi" flag
+
+chess <- fread("data/ratings20191231_downloaded20211001.csv") %>%
+  mutate(age = year(Sys.Date()) - birthday)
+
+raw_data_w_juniors_no_inactive_worldwide <- chess %>%
+  filter(sex != "", 
+         !(flag %in% c("i", "wi"))) 
+raw_data_w_juniors_w_inactive_worldwide <- chess %>%
+  filter(sex != "", 
+         age > 18) 
+raw_data_no_juniors_no_inactive_worldwide <- chess %>%
+  filter(sex != "", 
+         age > 18,
+         !(flag %in% c("i", "wi"))) 
+raw_data_no_juniors_w_inactive_worldwide <- chess %>%
+  filter(sex != "", 
+         age > 18)
+```
+
+
+```{r}
+# results from Richard
+data_w_juniors_no_inactive <- fread("data/SupplementaryTable1-RLS.csv")
+data_w_juniors_w_inactive <- fread("data/SupplementaryTableWithJuniorsWithInactives-RLS.csv")
+data_no_juniors_no_inactive <- fread("data/SupplementaryTable3-RLS.csv")
+data_no_juniors_w_inactive <- fread("data/SupplementaryTableNoJuniorsWithInactives-RLS.csv")
+
+# pvals for the sd permutation test computed by Nikos
+pval_sd_data_w_jun_no_ina <- fread("results/results_all_sd_w_jun_no_ina.csv")
+pval_sd_data_no_jun_no_ina <- fread("results/results_all_sd_no_jun_no_ina.csv")
+pval_sd_data_w_jun_w_ina <- fread("results/results_all_sd_w_jun_w_ina.csv")
+pval_sd_data_no_jun_w_ina <- fread("results/results_all_sd_no_jun_w_ina.csv")
+
+filter_country_data <- function(worldwide_data) {
+  # for country-by-country data filter countries with less than 30 female players
+  # technically this is at least either 30 men or women
+  countries_with_30_females <- worldwide_data %>%
+    filter(sex == "F") %>%
+    group_by(country) %>%
+    summarise(n = n()) %>%
+    filter(n >= 30) %>%
+    pull(country)
+  
+  # World Bank version of these country names
+  wb_countrycodes <- countrycode::countrycode(
+    countries_with_30_females, origin = "ioc", 
+    destination = "wb"
+  ) 
+  wb_countrycodes[is.na(wb_countrycodes)] <- "GBR"
+  
+  
+  country_by_country <- worldwide_data %>%
+    filter(country %in% countries_with_30_females) 
+  
+  return(country_by_country)
+}
+get_summary_stats <- function(raw_data) {
+  
+  country_by_country <- filter_country_data(raw_data)
+  
+  country_by_country <- country_by_country |> 
+    select(country, sex, rating, age) |>
+    arrange(country, sex, -rating) |>
+    group_by(country, sex) 
+  
+  rel_F <- country_by_country |>
+    group_by(country) |>
+    mutate(rel_F = sum(sex == "F")/n()) |>
+    select(country, rel_F) |>
+    unique()
+  
+  
+  mean_all <- country_by_country |> 
+    summarise(observed = mean(rating), 
+              age_obs = mean(age, na.rm = TRUE)) |>
+    mutate(group = "ALL")
+  
+  sd_all <- country_by_country |> 
+    summarise(observed = sd(rating), 
+              age_obs = mean(age, na.rm = TRUE)) |>
+    mutate(group = "ALL_SD")
+  
+  mean_10 <- country_by_country |>
+    slice(1:10) |> 
+    summarise(observed = mean(rating), 
+              age_obs = mean(age, na.rm = TRUE)) |>
+    # summarise(observed = mean(rating), 
+    #           sd_observed = sd(rating)) |>
+    mutate(group = "MAX10")
+  
+  mean_1 <- country_by_country |>
+    slice(1) |>
+    mutate(age_obs = mean(age, na.rm = TRUE)) |>
+    rename(observed = rating) |>
+    select(-age) |>
+    mutate(group = "MAX1")
+
+  rbind(mean_1, mean_10, mean_all, sd_all) |>
+    ungroup() |>
+    inner_join(rel_F) |>
+    rename(FED = country) 
+}
+
+
+reformat_results_data <- function(results_data, 
+                                  raw_data_worldwide,
+                                  pval_sd_data) {
+  
+  raw_data_summary <- get_summary_stats(raw_data_worldwide)
+  
+  data <- results_data |>
+    select(FED, MAX1_OBS, MAX1_PTMEAN, MAX1_PTPVAL, AGEDIFFMAX1, MAX10_OBS, 
+           MAX10_PTMEAN, MAX10_PTPVAL, AGEDIFFMAX10, 
+           MEAN_OBS, MEAN_PTMEAN, MEAN_PTPVAL, AGEDIFFOVERALL) |>
+    rename(ALL_OBS = MEAN_OBS, ALL_PTMEAN = MEAN_PTMEAN, ALL_PTPVAL=MEAN_PTPVAL, 
+           MAX1_AGEDIFF = AGEDIFFMAX1, MAX10_AGEDIFF = AGEDIFFMAX10, 
+           ALL_AGEDIFF = AGEDIFFOVERALL) |>
+    pivot_longer(cols = contains("_")) |>
+    rowwise() |>
+    mutate(group = strsplit(name, "[_]")[[1]][1], 
+           name = strsplit(name, "[_]")[[1]][2]) |>
+    pivot_wider(names_from = name, values_from = value) |>
+    right_join(raw_data_summary)
+  
+  pval_sd <- pval_sd_data |>
+    mutate(`p all` = 2 * pmin(`p all`, 1 - `p all`)) %>%
+    rename(FED = country) |>
+    select(FED, pval_sd = `p all`, diff_sd = `Obs. all`) |>
+    mutate(group = "ALL_SD") 
+  
+  data <- pval_sd |>
+    full_join(data) |>
+    mutate(PTPVAL = ifelse(is.na(PTPVAL), pval_sd, PTPVAL)) |>
+    mutate(OBS = ifelse(is.na(OBS), diff_sd, OBS)) |>
+    rename(OBS_diff = OBS) |>
+    select(-pval_sd, -diff_sd)
+  return(data)
+}
+
+data_w_juniors_no_inactive <- reformat_results_data(
+  data_w_juniors_no_inactive, 
+  raw_data_w_juniors_no_inactive_worldwide,
+  pval_sd_data_w_jun_no_ina
+)
+
+data_no_juniors_no_inactive <- reformat_results_data(
+  data_no_juniors_no_inactive, 
+  raw_data_no_juniors_no_inactive_worldwide,
+  pval_sd_data_no_jun_no_ina
+)
+
+data_w_juniors_w_inactive <- reformat_results_data(
+  data_w_juniors_w_inactive, 
+  raw_data_w_juniors_w_inactive_worldwide,
+  pval_sd_data_w_jun_w_ina
+)
+
+data_no_juniors_w_inactive <- reformat_results_data(
+  data_no_juniors_w_inactive, 
+  raw_data_no_juniors_w_inactive_worldwide,
+  pval_sd_data_no_jun_w_ina
+)
+
+```
+
+
+# Figure 1
+
+```{r}
+create_histogram <- function(data) {
+  hist_F <- data %>%
+    dplyr::filter(sex == "F") %>%
+    dplyr::mutate(sex = "Women") %>%
+    ggplot(aes(x = rating)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", binwidth = 100) + 
+    facet_wrap(~ sex) + 
+    scale_y_continuous(limits = c(0, 0.15)) + 
+    scale_x_continuous(limits = c(1000, 2900)) + 
+    labs(y = "Proportion", x = "Rating")
+  
+  hist_M <- data %>%
+    dplyr::filter(sex == "M") %>%
+    dplyr::mutate(sex = "Men") %>%
+    ggplot(aes(x = rating)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", binwidth = 100) + 
+    facet_wrap(~ sex) + 
+    # # theme_minimal() + 
+    scale_y_continuous(limits = c(0, 0.15)) +
+    scale_x_continuous(limits = c(1000, 2900)) +
+    labs(y = "Proportion", x = "Rating")
+  
+  hist_all <- hist_F + hist_M + 
+  theme(axis.title.y = element_blank()) 
+  
+  return(hist_all)
+}
+
+hist <- create_histogram(raw_data_w_juniors_no_inactive_worldwide) 
+ggsave(plot = hist, file = "results/paper/fig_1_w_jun_no_ina.png", 
+       width = 3.7, height = 2)
+
+hist <- create_histogram(raw_data_w_juniors_w_inactive_worldwide)
+ggsave(plot = hist, file = "results/paper/fig_1_w_jun_w_ina.png", 
+       width = 3.7, height = 2)
+
+hist <- create_histogram(raw_data_no_juniors_no_inactive_worldwide)
+ggsave(plot = hist, file = "results/paper/fig_1_no_jun_no_ina.png", 
+       width = 3.7, height = 2)
+
+hist <- create_histogram(raw_data_no_juniors_w_inactive_worldwide) 
+ggsave(plot = hist, file = "results/paper/fig_1_no_jun_w_ina.png", 
+       width = 3.7, height = 2)
+
+```
+
+
+# Figure 2
+
+```{r}
+
+get_lims <- function(plot_data, factor = 100) {
+  ylims <- c(floor(min(plot_data$F) / factor) * factor, 
+             ceiling(max(plot_data$F) / factor) * factor) 
+  xlims <- c(floor(min(plot_data$M) / factor) * factor, 
+             ceiling(max(plot_data$M) / factor) * factor) 
+  
+  lims <- c(min(ylims[1], xlims[1]), 
+            max(ylims[2], xlims[2]))
+  return(lims)
+}
+scatter_plot <- function(data, top = "ALL", 
+                         lims = NULL) {
+  plot_data <- data |>
+    filter(group == top) |>
+    select(FED, sex, PTMEAN, PTPVAL, observed) |>
+    pivot_wider(values_from = observed, names_from = sex) |>
+    mutate(
+      `*p*-value` = ifelse(PTPVAL < 0.05 | PTPVAL > 0.95, "significant", "not significant")
+      
+    )
+  
+  if (is.null(lims)) {
+    lims <- get_lims(plot_data = plot_data) 
+  }
+  
+  plot_data |>
+    ggplot(aes(y = F, x = M)) +
+    geom_point(aes(colour = `*p*-value`), size = 0.8) +
+    geom_abline(aes(slope = 1, intercept = 0), 
+                linetype = "dashed", color = "grey40") +
+    coord_cartesian(xlim = lims, ylim = lims) + 
+    theme(legend.position = "none") + 
+    scale_color_manual(values = c("black", "tomato3")) 
+}
+histogram_plot <- function(data, top, xlims = NULL) {
+  data |>
+    filter(group == top) %>%
+    ggplot(aes(x = OBS_diff)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", fill = "grey50") + 
+    geom_vline(xintercept = 0, linetype = "dashed") + 
+    expand_limits(y = c(0, 0.2), x = xlims) +
+    scale_y_continuous(breaks = c(0, 0.05, 0.1, 0.15, 0.2))
+  
+    # expand_limits(y = c(0, 0.12), x = xlims) +
+    # scale_y_continuous(breaks = c(0, 0.03, 0.06, 0.09, 0.12))
+}
+
+figure_2 <- function(data) {
+  p11 <- scatter_plot(data, top = "ALL", lims = c(1200, 2900)) + 
+    labs(y = "Mean rating W", x = "Mean rating M")
+  p12 <- scatter_plot(data, top = "MAX10", lims = c(1200, 2900)) +
+    labs(y = "Mean rating W (Top 10)", x = "Mean rating M (Top 10)")
+  p13 <- scatter_plot(data, top = "MAX1", lims = c(1200, 2900)) +
+    labs(y = "Mean rating W (Top 1)", x = "Mean rating M (Top 1)")
+  p14 <- scatter_plot(data, top = "ALL_SD") +
+    labs(y = "SD rating W", x = "SD rating M")
+  
+  p21 <- histogram_plot(data, top = "ALL", xlims = c(0, 800)) + 
+    labs(x = "\u0394 mean rating", y = "Proportion")  
+  p22 <- histogram_plot(data, top = "MAX10", xlims = c(0, 800)) + 
+    labs(x = "\u0394 mean rating (Top 10)", y = "Proportion")  
+  p23 <- histogram_plot(data, top = "MAX1", xlims = c(0, 800)) + 
+    labs(x = "\u0394 rating (Top 1)", y = "Proportion")  
+  p24 <- histogram_plot(data, top = "ALL_SD") +
+    labs(x = "\u0394 SD rating", y = "Proportion")  
+  
+  layout <- "
+  ACEG
+  BDFH
+  "
+  
+  (p11 + p21 + p12 + p22 + p13 + p23 + p14 + p24) +
+    plot_layout(guides = "collect", 
+                # heights = c(2, 1),
+                design = layout) +
+    plot_annotation(tag_levels = "A") + 
+    theme(legend.position = 'bottom')  + 
+    theme(legend.title = element_markdown())
+}
+
+fig2 <- figure_2(data_w_juniors_no_inactive)
+ggsave(plot = fig2, file = "results/paper/fig_2_w_jun_no_ina.png",
+       width = 8, height = 4)
+
+fig2 <- figure_2(data_w_juniors_w_inactive)
+ggsave(plot = fig2, file = "results/paper/fig_2_w_jun_w_ina.png",
+       width = 8, height = 4)
+
+fig2 <- figure_2(data_no_juniors_no_inactive)
+ggsave(plot = fig2, file = "results/paper/fig_2_no_jun_no_ina.png",
+       width = 8, height = 4)
+
+fig2 <- figure_2(data_no_juniors_w_inactive)
+ggsave(plot = fig2, file = "results/paper/fig_2_no_jun_w_ina.png",
+       width = 8, height = 4)
+
+```
+
+
+# Figure 3
+
+
+```{r}
+
+lims_first_row <- 0
+
+adj_histogram_plot <- function(data, top, xlims = NULL) {
+  data |>
+    filter(group == top) |>
+    mutate(ADJ = OBS_diff - PTMEAN) |>
+    ggplot(aes(x = ADJ)) +
+    geom_histogram(aes(y = stat(count) / sum(count)), 
+                   colour = "white", fill = "grey50") + 
+    geom_vline(xintercept = 0, linetype = "dashed") + 
+    expand_limits(y = c(0, 0.2), x = xlims) +
+    scale_y_continuous(breaks = c(0, 0.05, 0.1, 0.15, 0.2))
+    # expand_limits(y = c(0, 0.12), x = xlims) +
+    # scale_y_continuous(breaks = c(0, 0.03, 0.06, 0.09, 0.12))
+}
+
+plot_perc <- function(data, top = "ALL", add_label = "") {
+  data %>%
+    filter(group == top) |>
+    mutate(ADJ = OBS_diff - PTMEAN) |>
+    ggplot(aes(x = ADJ, y = rel_F)) + 
+    geom_point(size = 0.8) + 
+    labs(x = paste("Adj. \u0394 rating", add_label), 
+         y = "Percentage W in country") + 
+    geom_smooth(method = "glm", 
+                method.args=list(family="binomial"), 
+                alpha = 0.1, colour = 'grey', size = 0.4) + 
+    coord_flip(ylim = c(0, 0.40), xlim = c(0, 600)) + 
+    scale_y_continuous(labels = function(x) paste0(x*100, "%")) + 
+    # expand_limits(x = c(0, 600)) + 
+    geom_vline(xintercept = 0, linetype = "dashed")
+}
+
+figure_3 <- function(data) {
+  p11 <- adj_histogram_plot(data, top = "ALL", xlims = c(0, 800)) + 
+    labs(x = "Adj. \u0394 mean rating", y = "Proportion")  
+  p12 <- adj_histogram_plot(data, top = "MAX10", xlims = c(0, 800)) + 
+    labs(x = "Adj. \u0394 mean rating (Top 10)", y = "Proportion")  
+  p13 <- adj_histogram_plot(data, top = "MAX1", xlims = c(0, 800)) + 
+    labs(x = "Adj. \u0394 rating (Top 1)", y = "Proportion")  
+  
+  p21 <- plot_perc(data, top = "ALL") +
+    labs(x = "Adj. \u0394 mean rating", y = "Perc. W in Federation")  
+  p22 <- plot_perc(data, top = "MAX10") +
+    labs(x = "Adj. \u0394 mean rating (Top 10)", y = "Perc. W in Federation")  
+  p23 <- plot_perc(data, top = "MAX1") +
+    labs(x = "Adj. \u0394 rating (Top 1)", y = "Perc. W in Federation")  
+  
+  
+  layout <- "
+  ACEG
+  BDFH
+  "
+  
+  (p11 + p21 + p12 + p22 + p13 + p23 + plot_spacer() + plot_spacer()) +
+    plot_layout(guides = "collect", 
+                design = layout) +
+    plot_annotation(tag_levels = "A") + 
+    theme(legend.position = 'bottom')  + 
+    theme(legend.title = element_markdown())
+}
+
+fig3 <- figure_3(data_w_juniors_no_inactive)
+ggsave(plot = fig3, file = "results/paper/fig_3_w_jun_no_ina.png",
+       width = 8, height = 4)
+
+fig3 <- figure_3(data_no_juniors_no_inactive)
+ggsave(plot = fig3, file = "results/paper/fig_3_no_jun_no_ina.png",
+       width = 8, height = 4)
+
+fig3 <- figure_3(data_w_juniors_w_inactive)
+ggsave(plot = fig3, file = "results/paper/fig_3_w_jun_w_ina.png",
+       width = 8, height = 4)
+
+fig3 <- figure_3(data_no_juniors_w_inactive)
+ggsave(plot = fig3, file = "results/paper/fig_3_no_jun_w_ina.png",
+       width = 8, height = 4)
+
+```
+
+
+# Figure 4
+
+```{r}
+
+age_scatter <- function(data, top) {
+  plot_data <- data |>
+    filter(group == top) |>
+    select(FED, sex, age_obs) |>
+    pivot_wider(names_from = sex, values_from = age_obs) 
+  
+  lims <- get_lims(plot_data = plot_data, factor = 20)
+  
+  plot_data |>
+    ggplot(aes(y = F, x = M)) +
+    geom_abline(aes(slope = 1, intercept = 0), 
+                  linetype = "dashed", color = "grey40") +
+    geom_point(size = 0.8) +
+    expand_limits(x = lims, y = lims)
+}
+
+age_vs_rating <- function(data, top) {
+  data |>
+    filter(group == top) |>
+    mutate(ADJ = OBS_diff - PTMEAN) |>
+    select(FED, ADJ, AGEDIFF) |>
+    ggplot(aes(y = ADJ, x = AGEDIFF)) +
+    geom_vline(xintercept = 0, 
+               linetype = "dashed", color = "grey40") +
+    geom_point(size = 0.8) +
+    expand_limits(y = c(0, 700), 
+                  x = c(-30, 25))
+}
+
+figure_4 <- function(data, 
+                     regression_richard) {
+
+  p11 <- age_scatter(data, top = "ALL") +
+    labs(x = "Mean Age M", y = "Mean Age W") 
+  p12 <- age_scatter(data, top = "ALL") +
+    labs(x = "Mean Age M (Top 10)", y = "Mean Age W (Top 10)") 
+  p13 <- age_scatter(data, top = "ALL") +
+    labs(x = "Age M (Top 1)", y = "Age W (Top 1)") 
+  
+  p21 <- age_vs_rating(data, top = "ALL") +
+    geom_abline(intercept = regression_richard$AgeDiffAll, 
+                slope = regression_richard$`AdjRD-All`) +
+    labs(y = paste("Adj. \u0394 mean rating", add_label), 
+         x = "\u0394 mean age") 
+  
+  p22 <- age_vs_rating(data, top = "MAX10") +
+    geom_abline(intercept = regression_richard$AgeDiffMax10, 
+                slope = regression_richard$`AdjRD-Max10`) +
+    labs(y = paste("Adj. \u0394 mean rating (Top 10)", add_label), 
+         x = "\u0394 mean age (Top 10)") 
+  
+  p23 <- age_vs_rating(data, top = "MAX1") +
+    geom_abline(intercept = regression_richard$AgeDiffMax1, 
+                slope = regression_richard$`AdjRD-Max1`) +
+    labs(y = paste("Adj. \u0394 rating (Top 1)", add_label), 
+         x = "\u0394 age (Top 1)") 
+  
+  
+  layout <- "
+  ACE
+  BDF
+  "
+  
+  (p11 + p21 + p12 + p22 + p13 + p23) +
+    plot_layout(guides = "collect", 
+                design = layout) +
+    plot_annotation(tag_levels = "A") + 
+    theme(legend.position = 'bottom')  + 
+    theme(legend.title = element_markdown()) 
+  
+}
+
+regression_richard <- fread("results/AgePlotWithJNoI.csv") |>
+    filter(Country == "COEF")
+fig4 <- figure_4(data_w_juniors_no_inactive, 
+         regression_richard)
+ggsave(plot = fig4, file = "results/paper/fig_4_w_jun_no_ina.png",
+       width = 8, height = 4)
+
+regression_richard <- fread("results/AgePlotNoJNoI.csv") |>
+    filter(Country == "COEF")
+fig4 <- figure_4(data_no_juniors_no_inactive, 
+         regression_richard)
+ggsave(plot = fig4, file = "results/paper/fig_4_no_jun_no_ina.png",
+       width = 8, height = 4)
+
+regression_richard <- fread("results/AgePlotWithJWithI.csv") |>
+    filter(Country == "COEF")
+fig4 <- figure_4(data_w_juniors_w_inactive, 
+         regression_richard)
+ggsave(plot = fig4, file = "results/paper/fig_4_w_jun_w_ina.png",
+       width = 8, height = 4)
+
+regression_richard <- fread("results/AgePlotNoJWithI.csv") |>
+    filter(Country == "COEF")
+fig4 <- figure_4(data_no_juniors_w_inactive, 
+         regression_richard)
+ggsave(plot = fig4, file = "results/paper/fig_4_no_jun_w_ina.png",
+       width = 8, height = 4)
+
+```
+
+
+
+
