@@ -36,9 +36,10 @@ theme_set(
 # data downloaded from fide website on October 1 2021 https://ratings.fide.com/download_lists.phtml 
 # include all junior players for main analysis --> no filter on birthday
 # exlude every player who has an "i" or an "wi" flag
+# Age is 2019 minus birth year.
 
 chess <- fread("data/ratings20191231_downloaded20211001.csv") %>%
-  mutate(age = year(Sys.Date()) - birthday)
+  mutate(age = year(as.Date("2019-01-01")) - birthday)
 
 raw_data_w_juniors_no_inactive_worldwide <- chess %>%
   filter(sex != "", 
@@ -53,6 +54,12 @@ raw_data_no_juniors_no_inactive_worldwide <- chess %>%
 raw_data_no_juniors_w_inactive_worldwide <- chess %>%
   filter(sex != "", 
          age > 18)
+```
+
+
+```{r}
+# data from Gyuri (from https://github.com/weijima/gender-gap-chess/tree/main/data)
+rating_data <- readRDS("data/rating_data.rds")
 ```
 
 
@@ -199,19 +206,56 @@ data_no_juniors_w_inactive <- reformat_results_data(
   pval_sd_data_no_jun_w_ina
 )
 
+
+
+
 ```
+
+
+```{r}
+# rating data from Gyuri
+
+feds <- data_w_juniors_no_inactive |>
+  pull(FED) |>
+  unique()
+length(feds)
+
+
+# data from Gyuri
+rating_data <- readRDS("data/rating_data.rds") |>
+  mutate(age = year(as.Date("2019-01-01")) - born) |>
+  filter(fed %in% feds)
+
+rating_data_w_juniors_no_inactive <- rating_data %>%
+  filter(sex != "", 
+         active) 
+rating_data_w_juniors_w_inactive <- rating_data |>
+  filter(sex != "", 
+         age > 18) 
+rating_data_no_juniors_no_inactive <- rating_data %>%
+  filter(sex != "", 
+         age > 18,
+         active) 
+rating_data_no_juniors_w_inactive <- rating_data %>%
+  filter(sex != "", 
+         age > 18)
+
+```
+
+
+
 
 
 # Figure 1
 
 ```{r}
-create_histogram <- function(data) {
+create_histogram <- function(data, bwidth = 100) {
   hist_F <- data %>%
     dplyr::filter(sex == "F") %>%
     dplyr::mutate(sex = "Women") %>%
     ggplot(aes(x = rating)) +
     geom_histogram(aes(y = stat(count) / sum(count)), 
-                   colour = "white", binwidth = 100) + 
+                   colour = "white", binwidth = bwidth) + 
     facet_wrap(~ sex) + 
     scale_y_continuous(limits = c(0, 0.15)) + 
     scale_x_continuous(limits = c(1000, 2900)) + 
@@ -222,7 +266,7 @@ create_histogram <- function(data) {
     dplyr::mutate(sex = "Men") %>%
     ggplot(aes(x = rating)) +
     geom_histogram(aes(y = stat(count) / sum(count)), 
-                   colour = "white", binwidth = 100) + 
+                   colour = "white", binwidth = bwidth) + 
     facet_wrap(~ sex) + 
     # # theme_minimal() + 
     scale_y_continuous(limits = c(0, 0.15)) +
@@ -236,6 +280,7 @@ create_histogram <- function(data) {
 }
 
 hist <- create_histogram(raw_data_w_juniors_no_inactive_worldwide) 
+
 ggsave(plot = hist, file = "results/paper/fig_1_w_jun_no_ina.png", 
        width = 3.7, height = 2)
 
@@ -358,7 +403,7 @@ ggsave(plot = fig2, file = "results/paper/fig_2_no_jun_w_ina.png",
 ```
 
 
-# Figure 3
+# OLD Figure 3
 
 
 ```{r}
@@ -397,6 +442,7 @@ plot_perc <- function(data, top = "ALL", add_label = "") {
 }
 
 figure_3 <- function(data) {
+  # first row: adjusted mean rating
   p11 <- adj_histogram_plot(data, top = "ALL", xlims = c(0, 800)) + 
     labs(x = "Adj. \u0394 mean rating", y = "Proportion")  
   p12 <- adj_histogram_plot(data, top = "MAX10", xlims = c(0, 800)) + 
@@ -404,6 +450,8 @@ figure_3 <- function(data) {
   p13 <- adj_histogram_plot(data, top = "MAX1", xlims = c(0, 800)) + 
     labs(x = "Adj. \u0394 rating (Top 1)", y = "Proportion")  
   
+  
+  # second row: 
   p21 <- plot_perc(data, top = "ALL") +
     labs(x = "Adj. \u0394 mean rating", y = "Perc. W in Federation")  
   p22 <- plot_perc(data, top = "MAX10") +
@@ -444,7 +492,7 @@ ggsave(plot = fig3, file = "results/paper/fig_3_no_jun_w_ina.png",
 ```
 
 
-# Figure 4
+# OLD Figure 4
 
 ```{r}
 
@@ -454,7 +502,8 @@ age_scatter <- function(data, top) {
     select(FED, sex, age_obs) |>
     pivot_wider(names_from = sex, values_from = age_obs) 
   
-  lims <- get_lims(plot_data = plot_data, factor = 20)
+  lims <- get_lims(plot_data = plot_data, factor = 10)
+  lims <- c(15, 70)
   
   plot_data |>
     ggplot(aes(y = F, x = M)) +
@@ -478,7 +527,7 @@ age_vs_rating <- function(data, top) {
 }
 
 figure_4 <- function(data, 
-                     regression_richard) {
+                     regression_richard, add_label = "LABEL") {
 
   p11 <- age_scatter(data, top = "ALL") +
     labs(x = "Mean Age M", y = "Mean Age W") 
@@ -550,6 +599,97 @@ ggsave(plot = fig4, file = "results/paper/fig_4_no_jun_w_ina.png",
 
 ```
 
+
+
+
+# NEW Figure 3
+
+```{r}
+rating_data <- rating_data_w_juniors_no_inactive
+
+#data <- data_w_juniors_no_inactive
+
+experience_scatter <- function(rating_data, top = Inf) {
+  
+  plot_data <- rating_data |>
+    arrange(fed, sex, rating) |>
+    group_by(fed, sex) |>
+    slice_tail(n = top) |>
+    select(fed, sex, games) |>
+    group_by(fed, sex) |>
+    summarise(games = mean(games)) |>
+    pivot_wider(names_from = sex, values_from = games) 
+  
+  lims <- get_lims(plot_data = plot_data, factor = 20)
+  lims <- c(0, 800)
+  
+  plot_data |>
+    ggplot(aes(y = F, x = M)) +
+    geom_abline(aes(slope = 1, intercept = 0), 
+                  linetype = "dashed", color = "grey40") +
+    geom_point(size = 0.8) +
+    expand_limits(x = lims, y = lims)
+}
+
+
+figure_3_new <- function(data, rating_data,
+                         regression_richard, add_label = "LABEL") {
+  
+  # first row: adjusted mean rating
+  p11 <- adj_histogram_plot(data, top = "ALL", xlims = c(0, 800)) + 
+    labs(x = "Overall \u0394 mean rating", y = "Proportion")  
+  p12 <- adj_histogram_plot(data, top = "MAX10", xlims = c(0, 800)) + 
+    labs(x = "P-adj. \u0394 mean rating (Top 10)", y = "Proportion")  
+  p13 <- adj_histogram_plot(data, top = "MAX1", xlims = c(0, 800)) + 
+    labs(x = "P-adj. \u0394 rating (Top 1)", y = "Proportion")  
+  
+  
+  # second row: experiene women vs. age men. 
+  p21 <- experience_scatter(rating_data, top = Inf) +
+    labs(x = "Mean # Games M", y = "Mean # Games W") 
+  p22 <- experience_scatter(rating_data, top = 10) +
+    labs(x = "Mean # Games M (Top 10)", y = "# Games W (Top 10)") 
+  p23 <- experience_scatter(rating_data, top = 1) +
+    labs(x = "# Games M (Top 1)", y = "# Games (Top 1)") 
+
+  # Third row: Age women vs. age men
+  p31 <- age_scatter(data, top = "ALL") +
+    labs(x = "Mean Age M", y = "Mean Age W") 
+  p32 <- age_scatter(data, top = "MAX10") +
+    labs(x = "Mean Age M (Top 10)", y = "Mean Age W (Top 10)") 
+  p33 <- age_scatter(data, top = "MAX1") +
+    labs(x = "Age M (Top 1)", y = "Age W (Top 1)") 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  layout <- "
+  ACE
+  BDF
+  "
+  
+  (p11 + p21 + p12 + p22 + p13 + p23) +
+    plot_layout(guides = "collect", 
+                design = layout) +
+    plot_annotation(tag_levels = "A") + 
+    theme(legend.position = 'bottom')  + 
+    theme(legend.title = element_markdown()) 
+  
+}
+
+regression_richard <- fread("results/AgePlotWithJNoI.csv") |>
+    filter(Country == "COEF")
+fig4 <- figure_4(data_w_juniors_no_inactive, 
+         regression_richard)
+
+
+
+```
 
 
 
